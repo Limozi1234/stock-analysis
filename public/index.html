@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Stock Analysis Tool</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>📈 Stock Analysis Tool</h1>
+    <div class="powered-by">Powered by Yahoo Finance</div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="analysis">Analysis</button>
+    <button class="tab" data-tab="compare">Compare</button>
+  </nav>
+
+  <!-- ANALYSIS TAB -->
+  <div class="tab-panel active" id="tab-analysis">
+    <main>
+      <section class="search-section">
+        <input type="text" id="tickerInput" placeholder="Enter ticker symbol (e.g. AAPL)" />
+        <button id="searchBtn">Analyze</button>
+        <button id="compareBtn">Add to Compare</button>
+        <span id="status"></span>
+      </section>
+
+      <div id="statName" class="stat-name"></div>
+
+      <section class="stats-section" id="statsSection" hidden>
+        <div class="stat-card">
+          <span class="label">Price</span>
+          <span class="value" id="statPrice">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">Day Change</span>
+          <span class="value" id="statChange">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">YTD Return</span>
+          <span class="value" id="statYTD">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">52-Week High</span>
+          <span class="value" id="stat52High">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">52-Week Low</span>
+          <span class="value" id="stat52Low">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">Latest Volume</span>
+          <span class="value" id="statVolume">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">CAGR (3Y)</span>
+          <span class="value" id="statCAGR">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">P/E Ratio</span>
+          <span class="value" id="statPE">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">RSI (14)</span>
+          <span class="value" id="statRSI">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">Dividend Yield</span>
+          <span class="value" id="statDivYield">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">52-Week Position</span>
+          <span class="value" id="stat52Pos">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">Std Deviation (1Y)</span>
+          <span class="value" id="statStdDev">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">Beta (1Y)</span>
+          <span class="value" id="statBeta">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">Max Drawdown (1Y)</span>
+          <span class="value" id="statMaxDD">--</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">Sharpe Ratio (1Y)</span>
+          <span class="value" id="statSharpe">--</span>
+        </div>
+        <div class="stat-card wide">
+          <span class="label">3-Year Annual Returns</span>
+          <div id="statAnnualReturns" class="annual-returns">--</div>
+        </div>
+        <div class="stat-card wide">
+          <span class="label">StockTwits Sentiment</span>
+          <div id="statSocial" class="social-sentiment">--</div>
+        </div>
+      </section>
+
+      <section class="chart-controls">
+        <label><input type="checkbox" id="smaToggle" /> Show 50-day SMA</label>
+        <label><input type="checkbox" id="sma200Toggle" /> Show 200-day SMA</label>
+      </section>
+
+      <section class="chart-section">
+        <canvas id="priceChart"></canvas>
+      </section>
+
+      <section class="compare-section">
+        <h2>Comparison (Normalized % Change)</h2>
+        <div id="compareList" class="compare-list"></div>
+        <canvas id="compareChart"></canvas>
+      </section>
+    </main>
+  </div>
+
+  <!-- COMPARE TAB -->
+  <div class="tab-panel" id="tab-compare">
+    <main>
+      <section class="search-section">
+        <input type="text" id="cmpTickerInput" placeholder="Enter ticker symbol (e.g. MSFT)" />
+        <button id="cmpAddBtn">Add Stock</button>
+        <span id="cmpStatus"></span>
+      </section>
+      <div class="cmp-chips" id="cmpChips"></div>
+      <div class="cmp-table-wrap">
+        <table class="cmp-table" id="cmpTable">
+          <thead><tr id="cmpHeaderRow"><th class="metric-col">Metric</th></tr></thead>
+          <tbody id="cmpBody"></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="app.js"></script>
+</body>
+</html>
