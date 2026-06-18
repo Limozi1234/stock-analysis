@@ -35,24 +35,9 @@ body {
   font-size: 1.4rem;
 }
 
-.api-key-box {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 0.85rem;
-}
-.api-key-box input {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid #334155;
-  background: #0f172a;
-  color: var(--text);
-  width: 200px;
-}
-.api-key-box a {
-  color: var(--accent);
-  text-decoration: none;
+.powered-by {
   font-size: 0.8rem;
+  color: var(--muted);
 }
 
 button {

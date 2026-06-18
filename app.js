@@ -1,15 +1,12 @@
-const AV_BASE = "https://www.alphavantage.co/query";
-const ST_BASE = "https://api.stocktwits.com/api/2/streams/symbol";
+const ST_BASE  = "https://api.stocktwits.com/api/2/streams/symbol";
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-// ---- API key ----
-const apiKeyInput = document.getElementById("apiKeyInput");
-apiKeyInput.value = localStorage.getItem("av_api_key") || "";
-document.getElementById("saveKeyBtn").addEventListener("click", () => {
-  localStorage.setItem("av_api_key", apiKeyInput.value.trim());
-  setStatus("API key saved.");
-});
-function getKey() { return localStorage.getItem("av_api_key") || apiKeyInput.value.trim(); }
+// Yahoo Finance endpoints to try in order
+const YF_URLS = (symbol) => [
+  `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5y`,
+  `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5y`,
+  `https://corsproxy.io/?${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5y`)}`,
+];
 
 // ---- DOM refs ----
 const tickerInput      = document.getElementById("tickerInput");
@@ -62,47 +59,42 @@ function cacheSet(key, data) {
   try { localStorage.setItem(`av_cache_${key}`, JSON.stringify({ ts: Date.now(), data })); } catch {}
 }
 
-// ---- Alpha Vantage fetch ----
-async function avGet(params) {
-  const key = getKey();
-  if (!key) throw new Error("Please enter and save your Alpha Vantage API key first. Get one free at alphavantage.co");
-  const url = `${AV_BASE}?${new URLSearchParams({ ...params, apikey: key })}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Network error: ${res.status}`);
-  const data = await res.json();
-  if (data["Note"]) throw new Error("Rate limit hit (5 req/min). Wait a moment and try again.");
-  if (data["Information"]) throw new Error("Daily API limit reached (25/day). Try again tomorrow or upgrade your key.");
-  if (data["Error Message"]) throw new Error(`Invalid symbol or API error.`);
-  return data;
-}
-
+// ---- Yahoo Finance fetch ----
 async function fetchSeries(symbol) {
   const cached = cacheGet(symbol);
   if (cached) return cached;
 
-  const [dailyData, overviewData] = await Promise.all([
-    avGet({ function: "TIME_SERIES_DAILY", symbol, outputsize: "full" }),
-    avGet({ function: "OVERVIEW", symbol }).catch(() => ({})),
-  ]);
+  let json = null;
+  for (const url of YF_URLS(symbol)) {
+    try {
+      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!res.ok) continue;
+      json = await res.json();
+      if (json?.chart?.result?.[0]) break;
+    } catch { continue; }
+  }
 
-  const ts = dailyData["Time Series (Daily)"];
-  if (!ts) throw new Error(`No price data found for ${symbol}.`);
+  if (!json?.chart?.result?.[0]) throw new Error(`Could not load data for ${symbol}. Check the ticker and try again.`);
 
-  const dates = Object.keys(ts).sort();
-  const closes  = dates.map(d => parseFloat(ts[d]["4. close"]));
-  const volumes = dates.map(d => parseInt(ts[d]["5. volume"], 10));
+  const result = json.chart.result[0];
+  const meta   = result.meta;
+  const timestamps = result.timestamp;
+  const quote  = result.indicators.quote[0];
 
-  const ov = overviewData || {};
+  const dates   = timestamps.map(t => new Date(t * 1000).toISOString().slice(0, 10));
+  const closes  = quote.close.map(v  => v  == null ? null : parseFloat(v.toFixed(4)));
+  const volumes = quote.volume.map(v => v  == null ? null : v);
+
   const series = {
     dates, closes, volumes,
     meta: {
-      longName:         ov["Name"]          || symbol,
-      shortName:        ov["Name"]          || symbol,
-      fiftyTwoWeekHigh: parseFloat(ov["52WeekHigh"]) || null,
-      fiftyTwoWeekLow:  parseFloat(ov["52WeekLow"])  || null,
-      trailingPE:       parseFloat(ov["PERatio"])    || null,
-      dividendYield:    parseFloat(ov["DividendYield"]) || null,
-      instrumentType:   ov["AssetType"] || "",
+      longName:         meta.longName  || meta.shortName || symbol,
+      shortName:        meta.shortName || symbol,
+      fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || null,
+      fiftyTwoWeekLow:  meta.fiftyTwoWeekLow  || null,
+      trailingPE:       null,
+      dividendYield:    null,
+      instrumentType:   meta.instrumentType || "",
     },
   };
 
