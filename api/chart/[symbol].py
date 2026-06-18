@@ -7,7 +7,8 @@ class handler(BaseHTTPRequestHandler):
         symbol = self.path.strip("/").split("/")[-1].upper()
         try:
             ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="5y", interval="1d", auto_adjust=True)
+            # 2y keeps response fast on Vercel free tier; local server.py still uses 5y
+            hist = ticker.history(period="2y", interval="1d", auto_adjust=True)
             if hist.empty:
                 raise ValueError(f"No data found for {symbol}")
 
