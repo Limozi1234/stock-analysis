@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/api/chart/:symbol", "destination": "/api/chart/[symbol]" },
+    { "source": "/api/social/:symbol", "destination": "/api/social/[symbol]" }
+  ]
+}
