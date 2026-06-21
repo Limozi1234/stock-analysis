@@ -32,7 +32,6 @@ const YF_URLS = (symbol) => {
 // ---- DOM refs ----
 const tickerInput      = document.getElementById("tickerInput");
 const searchBtn        = document.getElementById("searchBtn");
-const compareBtn       = document.getElementById("compareBtn");
 const statusEl         = document.getElementById("status");
 const statsSection     = document.getElementById("statsSection");
 const statName         = document.getElementById("statName");
@@ -55,11 +54,8 @@ const statAnnualReturns= document.getElementById("statAnnualReturns");
 const statSocial       = document.getElementById("statSocial");
 const smaToggle        = document.getElementById("smaToggle");
 const sma200Toggle     = document.getElementById("sma200Toggle");
-const compareList      = document.getElementById("compareList");
-
-let priceChart = null, compareChart = null;
+let priceChart = null;
 let currentSeries = null, spySeriesCache = null;
-const compareSeries = new Map();
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
@@ -335,37 +331,87 @@ function renderPriceChart(symbol, series) {
   });
 }
 
-// ---- Compare chart (Analysis tab) ----
-function renderCompareChart() {
-  if (compareSeries.size === 0) { if (compareChart) { compareChart.destroy(); compareChart = null; } return; }
-  const colors = ["#38bdf8","#fbbf24","#a78bfa","#4ade80","#f87171","#f472b6"];
-  let colorIdx = 0, datasets = [], labels = [];
-  for (const [symbol, series] of compareSeries.entries()) {
-    const sliceStart = Math.max(0, series.dates.length-300);
-    const dates = series.dates.slice(sliceStart), closes = series.closes.slice(sliceStart);
-    if (dates.length > labels.length) labels = dates;
-    const base = closes.find(c => c != null);
-    datasets.push({ label:symbol, data: closes.map(c => (c!=null&&base)?((c-base)/base)*100:null), borderColor:colors[colorIdx%colors.length], backgroundColor:"transparent", pointRadius:0, borderWidth:2, tension:0.1 });
-    colorIdx++;
+// ---- SEC EDGAR earnings reports (Analysis tab) ----
+// data.sec.gov is CORS-enabled and accepts browser User-Agents, so we proxy it.
+// www.sec.gov blocks browser UAs, so the ticker->CIK map ships as a static file.
+const SEC_BASE = "/api/sec";    // -> data.sec.gov
+let secTickerMap = null;
+
+async function getCIK(symbol) {
+  if (!secTickerMap) {
+    try { secTickerMap = await (await fetch("/sec-tickers.json")).json(); }
+    catch { secTickerMap = {}; }
   }
-  if (compareChart) compareChart.destroy();
-  compareChart = new Chart(document.getElementById("compareChart"), {
-    type:"line", data:{labels,datasets},
-    options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:"index",intersect:false},
-      scales:{ x:{ticks:{color:"#94a3b8",maxTicksLimit:10},grid:{color:"#334155"}}, y:{ticks:{color:"#94a3b8",callback:v=>`${v.toFixed(1)}%`},grid:{color:"#334155"}} },
-      plugins:{legend:{labels:{color:"#e2e8f0"}}} },
-  });
+  const cik = secTickerMap[symbol];
+  return cik != null ? String(cik).padStart(10, "0") : null;
 }
 
-function renderCompareChips() {
-  compareList.innerHTML = "";
-  for (const symbol of compareSeries.keys()) {
-    const chip = document.createElement("div"); chip.className = "compare-chip";
-    const nameSpan = document.createElement("span"); nameSpan.textContent = symbol; chip.appendChild(nameSpan);
-    const btn = document.createElement("button"); btn.textContent = "✕";
-    btn.addEventListener("click", () => { compareSeries.delete(symbol); renderCompareChips(); renderCompareChart(); });
-    chip.appendChild(btn); compareList.appendChild(chip);
+function daysBetween(a, b) { return Math.round((new Date(b) - new Date(a)) / 864e5); }
+
+async function fetchEarnings(symbol) {
+  const cik = await getCIK(symbol);
+  if (!cik) return null;
+  const cikNum = String(Number(cik)); // un-padded for archive links
+
+  const subs = await (await fetch(`${SEC_BASE}/submissions/CIK${cik}.json`)).json();
+  const r = subs.filings.recent;
+  const filings = [];
+  for (let i = 0; i < r.form.length && filings.length < 4; i++) {
+    if (r.form[i] === "10-Q" || r.form[i] === "10-K") {
+      filings.push({
+        form: r.form[i], filed: r.filingDate[i], end: r.reportDate[i],
+        accn: r.accessionNumber[i], doc: r.primaryDocument[i],
+      });
+    }
   }
+
+  // Reported diluted EPS, keyed by (accession | period-end), keeping period length.
+  const eps = {};
+  try {
+    const ec = await (await fetch(`${SEC_BASE}/api/xbrl/companyconcept/CIK${cik}/us-gaap/EarningsPerShareDiluted.json`)).json();
+    for (const f of (ec.units["USD/shares"] || [])) {
+      if (!f.start) continue;
+      const key = `${f.accn}|${f.end}`;
+      (eps[key] = eps[key] || []).push({ val: f.val, len: daysBetween(f.start, f.end) });
+    }
+  } catch {}
+
+  for (const f of filings) {
+    const arr = eps[`${f.accn}|${f.end}`] || [];
+    const target = f.form === "10-K" ? 365 : 90; // annual vs quarter period
+    arr.sort((a, b) => Math.abs(a.len - target) - Math.abs(b.len - target));
+    f.eps = arr.length ? arr[0].val : null;
+    f.url = `https://www.sec.gov/Archives/edgar/data/${cikNum}/${f.accn.replace(/-/g, "")}/${f.doc}`;
+  }
+  return filings;
+}
+
+function renderEarnings(filings) {
+  const el = document.getElementById("earningsList");
+  if (!el) return;
+  if (!filings || !filings.length) {
+    el.innerHTML = `<div class="text-sm text-muted">No SEC earnings filings found for this symbol (ETFs and non-US tickers have none).</div>`;
+    return;
+  }
+  el.innerHTML = filings.map((f, i) => {
+    const prior = filings[i + 1]; // next-older filing
+    let cls = "", arrow = "";
+    // Only compare like-for-like (quarter vs quarter, annual vs annual) — a 10-K's
+    // full-year EPS isn't comparable to an adjacent quarter's.
+    if (f.eps != null && prior && prior.eps != null && prior.form === f.form) {
+      if (f.eps > prior.eps)      { cls = "positive"; arrow = "▲"; }
+      else if (f.eps < prior.eps) { cls = "negative"; arrow = "▼"; }
+    }
+    const label   = f.form === "10-K" ? "Annual · 10-K" : "Quarter · 10-Q";
+    const epsStr  = f.eps != null ? `$${f.eps.toFixed(2)}` : "—";
+    return `<a href="${f.url}" target="_blank" rel="noopener noreferrer" class="earnings-card">
+      <span class="label">${label}</span>
+      <span class="earnings-period">Period ending ${f.end}</span>
+      <span class="earnings-eps ${cls}">${epsStr}${arrow ? ` <span class="earnings-arrow">${arrow}</span>` : ""}</span>
+      <span class="earnings-eps-label">Diluted EPS</span>
+      <span class="earnings-filed">Filed ${f.filed} · View report ↗</span>
+    </a>`;
+  }).join("");
 }
 
 // ---- Analysis tab actions ----
@@ -385,6 +431,13 @@ async function analyzeTicker() {
     renderSocial(socialData);
     renderPriceChart(symbol, series);
     setStatus(`Loaded ${symbol} — ${series.dates.length} trading days.`);
+
+    // Earnings reports (SEC EDGAR) — independent of price data, non-blocking.
+    const earnEl = document.getElementById("earningsList");
+    if (earnEl) earnEl.innerHTML = `<div class="text-sm text-muted">Loading earnings reports…</div>`;
+    fetchEarnings(symbol)
+      .then(renderEarnings)
+      .catch(() => { if (earnEl) earnEl.innerHTML = `<div class="text-sm text-muted">Earnings reports unavailable.</div>`; });
   } catch (err) {
     setStatus(err.message, true);
   } finally {
@@ -392,21 +445,7 @@ async function analyzeTicker() {
   }
 }
 
-async function addToCompare() {
-  const symbol = normalizeSymbol(tickerInput.value);
-  if (!symbol) { setStatus("Please enter a valid ticker symbol (letters, digits, . - ^).", true); return; }
-  if (compareSeries.has(symbol)) { setStatus(`${symbol} already in comparison.`); return; }
-  setStatus(`Loading ${symbol}...`); compareBtn.disabled = true;
-  try {
-    const series = currentSeries?.symbol === symbol ? currentSeries : await fetchSeries(symbol);
-    compareSeries.set(symbol, series); renderCompareChips(); renderCompareChart();
-    setStatus(`Added ${symbol} to comparison.`);
-  } catch (err) { setStatus(err.message, true); }
-  finally { compareBtn.disabled = false; }
-}
-
 searchBtn.addEventListener("click", analyzeTicker);
-compareBtn.addEventListener("click", addToCompare);
 tickerInput.addEventListener("keydown", e => { if (e.key==="Enter") analyzeTicker(); });
 smaToggle.addEventListener("change",    () => { if (currentSeries) renderPriceChart(currentSeries.symbol, currentSeries); });
 sma200Toggle.addEventListener("change", () => { if (currentSeries) renderPriceChart(currentSeries.symbol, currentSeries); });
@@ -520,7 +559,245 @@ async function cmpAddStock() {
 cmpAddBtn.addEventListener("click", cmpAddStock);
 cmpTickerInput.addEventListener("keydown", e => { if (e.key==="Enter") cmpAddStock(); });
 
+// Seed the Compare tab with SPY and QQQ so it isn't empty on first load.
+async function initCompareDefaults() {
+  for (const sym of ["SPY", "QQQ"]) {
+    cmpTickerInput.value = sym;
+    await cmpAddStock();
+  }
+  cmpTickerInput.value = "";
+}
+initCompareDefaults();
+
+// ---- ETFs tab: curated reference list ----
+const ETFS = [
+  ["SPY",  "SPDR S&P 500 ETF — tracks the S&P 500 index of large-cap US stocks."],
+  ["IVV",  "iShares Core S&P 500 ETF — low-cost S&P 500 index exposure."],
+  ["VOO",  "Vanguard S&P 500 ETF — tracks the S&P 500 at a low expense ratio."],
+  ["VTI",  "Vanguard Total Stock Market ETF — the entire investable US equity market."],
+  ["QQQ",  "Invesco QQQ Trust — tracks the Nasdaq-100, heavy in large-cap tech."],
+  ["DIA",  "SPDR Dow Jones Industrial Average ETF — the 30 Dow blue-chip stocks."],
+  ["IWM",  "iShares Russell 2000 ETF — US small-cap stocks."],
+  ["ITOT", "iShares Core S&P Total US Stock Market ETF — broad US equities."],
+  ["VEA",  "Vanguard FTSE Developed Markets ETF — developed international equities ex-US."],
+  ["VWO",  "Vanguard FTSE Emerging Markets ETF — emerging-market equities."],
+  ["VXUS", "Vanguard Total International Stock ETF — all non-US equities."],
+  ["EFA",  "iShares MSCI EAFE ETF — developed markets in Europe, Australasia, Far East."],
+  ["EEM",  "iShares MSCI Emerging Markets ETF — large- and mid-cap emerging markets."],
+  ["EWJ",  "iShares MSCI Japan ETF — Japanese equities."],
+  ["FXI",  "iShares China Large-Cap ETF — large-cap Chinese stocks."],
+  ["AGG",  "iShares Core US Aggregate Bond ETF — broad US investment-grade bonds."],
+  ["BND",  "Vanguard Total Bond Market ETF — broad US investment-grade bond market."],
+  ["BNDX", "Vanguard Total International Bond ETF — non-US investment-grade bonds."],
+  ["TLT",  "iShares 20+ Year Treasury Bond ETF — long-dated US Treasuries."],
+  ["LQD",  "iShares iBoxx $ Investment Grade Corporate Bond ETF."],
+  ["HYG",  "iShares iBoxx $ High Yield Corporate Bond ETF — high-yield 'junk' bonds."],
+  ["GLD",  "SPDR Gold Shares — tracks the spot price of gold bullion."],
+  ["SLV",  "iShares Silver Trust — tracks the spot price of silver."],
+  ["USO",  "United States Oil Fund — tracks WTI crude oil futures."],
+  ["GDX",  "VanEck Gold Miners ETF — global gold-mining companies."],
+  ["VNQ",  "Vanguard Real Estate ETF — US REITs and real estate companies."],
+  ["XLK",  "Technology Select Sector SPDR — S&P 500 technology sector."],
+  ["XLF",  "Financial Select Sector SPDR — S&P 500 financials."],
+  ["XLE",  "Energy Select Sector SPDR — S&P 500 energy companies."],
+  ["XLV",  "Health Care Select Sector SPDR — S&P 500 health care."],
+  ["XLY",  "Consumer Discretionary Select Sector SPDR."],
+  ["XLP",  "Consumer Staples Select Sector SPDR."],
+  ["XLI",  "Industrial Select Sector SPDR."],
+  ["XLU",  "Utilities Select Sector SPDR."],
+  ["XLB",  "Materials Select Sector SPDR."],
+  ["XLRE", "Real Estate Select Sector SPDR."],
+  ["XLC",  "Communication Services Select Sector SPDR."],
+  ["SOXX", "iShares Semiconductor ETF — US-listed semiconductor companies."],
+  ["SMH",  "VanEck Semiconductor ETF — the largest chip makers and equipment firms."],
+  ["SOXL", "Direxion Daily Semiconductor Bull 3X — 3x leveraged chip stocks (high risk)."],
+  ["SOXS", "Direxion Daily Semiconductor Bear 3X — 3x inverse chip stocks (high risk)."],
+  ["VGT",  "Vanguard Information Technology ETF — US tech sector."],
+  ["ARKK", "ARK Innovation ETF — actively managed disruptive-innovation growth stocks."],
+  ["SCHD", "Schwab US Dividend Equity ETF — high-quality, high-dividend US stocks."],
+  ["VIG",  "Vanguard Dividend Appreciation ETF — companies with growing dividends."],
+  ["VYM",  "Vanguard High Dividend Yield ETF — above-average dividend-paying US stocks."],
+  ["VUG",  "Vanguard Growth ETF — large-cap US growth stocks."],
+  ["VTV",  "Vanguard Value ETF — large-cap US value stocks."],
+  ["IJR",  "iShares Core S&P Small-Cap ETF."],
+  ["IJH",  "iShares Core S&P Mid-Cap ETF."],
+  ["TQQQ", "ProShares UltraPro QQQ — 3x leveraged Nasdaq-100 (high risk)."],
+  ["SQQQ", "ProShares UltraPro Short QQQ — 3x inverse Nasdaq-100 (high risk)."],
+];
+
+const etfBody = document.getElementById("etfBody");
+if (etfBody) {
+  for (const [sym, desc] of ETFS) {
+    const tr = document.createElement("tr");
+    const symTd = document.createElement("td");
+    const link = document.createElement("button");
+    link.className = "etf-link";
+    link.textContent = sym;
+    link.addEventListener("click", () => {
+      tickerInput.value = sym;
+      document.querySelector('.tab[data-tab="analysis"]').click();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      analyzeTicker();
+    });
+    symTd.appendChild(link);
+    const descTd = document.createElement("td");
+    descTd.className = "etf-desc";
+    descTd.textContent = desc;
+    const volTd = document.createElement("td");
+    volTd.className = "etf-vol";
+    volTd.id = `etfVol-${sym}`;
+    volTd.textContent = "—";
+    const trendTd = document.createElement("td");
+    trendTd.className = "etf-trend";
+    trendTd.id = `etfTrend-${sym}`;
+    tr.append(symTd, descTd, volTd, trendTd);
+    etfBody.appendChild(tr);
+  }
+}
+
+// Lazily fetch the latest-day volume for each ETF the first time the tab opens.
+// Limited concurrency keeps Yahoo happy; fetchSeries already caches for 24h.
+// Compact inline sparkline over the last ~3 months of values, in the given color.
+function sparklineSVG(values, color) {
+  const data = values.slice(-63).filter(v => v != null); // ~3 months of trading days
+  if (data.length < 2) return "";
+  const w = 80, h = 18, pad = 2;
+  const min = Math.min(...data), max = Math.max(...data), range = (max - min) || 1;
+  const pts = data.map((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (w - 2 * pad);
+    const y = pad + (1 - (v - min) / range) * (h - 2 * pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none" aria-hidden="true">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+const avg = a => a.reduce((s, x) => s + x, 0) / a.length;
+const compactNum = n => Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+
+let etfVolsLoaded = false;
+async function loadEtfVolumes() {
+  if (etfVolsLoaded) return;
+  etfVolsLoaded = true;
+  const queue = ETFS.map(([sym]) => sym);
+  const volume = {};
+  async function worker() {
+    while (queue.length) {
+      const sym = queue.shift();
+      const cell = document.getElementById(`etfVol-${sym}`);
+      const trendCell = document.getElementById(`etfTrend-${sym}`);
+      if (cell) cell.textContent = "…";
+      try {
+        const series = await fetchSeries(sym);
+        const vols = series.volumes.filter(v => v != null);
+        const last = vols[vols.length - 1];
+        volume[sym] = last || 0;
+        if (cell) cell.textContent = last ? compactNum(last) : "N/A";
+
+        // Trend: price sparkline (green/red) + volume sparkline (amber), both ~3 months.
+        const closes = series.closes.filter(v => v != null);
+        const vSeries = vols.slice(-63);
+        const pWin = closes.slice(-63);
+        if (trendCell && pWin.length >= 2) {
+          const pChg = ((pWin[pWin.length - 1] - pWin[0]) / pWin[0]) * 100;
+          const pUp = pChg >= 0;
+          let volRow = "";
+          if (vSeries.length >= 6) {
+            // Diff recent 5-day avg vs the window's first 5-day avg (spike-resistant).
+            const v0 = avg(vSeries.slice(0, 5)), v1 = avg(vSeries.slice(-5));
+            const vChg = v0 ? ((v1 - v0) / v0) * 100 : 0;
+            volRow = `<div class="trend-row trend-clickable" data-sym="${sym}" data-kind="vol" title="Click to expand">` +
+              `<span class="trend-tag">Vol</span>${sparklineSVG(vols, "#fbbf24")}` +
+              `<span class="spark-chg muted">${vChg >= 0 ? "+" : ""}${vChg.toFixed(0)}%</span></div>`;
+          }
+          trendCell.innerHTML =
+            `<div class="trend-row trend-clickable" data-sym="${sym}" data-kind="px" title="Click to expand">` +
+            `<span class="trend-tag">Px</span>${sparklineSVG(closes, pUp ? "#34d399" : "#fb7185")}` +
+            `<span class="spark-chg ${pUp ? "positive" : "negative"}">${pUp ? "+" : ""}${pChg.toFixed(1)}%</span></div>` +
+            volRow;
+        }
+      } catch {
+        volume[sym] = -1;
+        if (cell) cell.textContent = "N/A";
+        if (trendCell) trendCell.textContent = "—";
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: 5 }, worker));
+
+  // Reorder rows by latest volume, highest first.
+  [...ETFS]
+    .sort((a, b) => (volume[b[0]] ?? -1) - (volume[a[0]] ?? -1))
+    .forEach(([sym]) => {
+      const cell = document.getElementById(`etfVol-${sym}`);
+      if (cell) etfBody.appendChild(cell.closest("tr"));
+    });
+}
+const etfsTabBtn = document.querySelector('.tab[data-tab="etfs"]');
+if (etfsTabBtn) etfsTabBtn.addEventListener("click", loadEtfVolumes);
+
+// ---- Trend detail modal (click a PX / VOL sparkline) ----
+let trendModalChart = null;
+const trendModal      = document.getElementById("trendModal");
+const trendModalTitle = document.getElementById("trendModalTitle");
+const trendModalMeta  = document.getElementById("trendModalMeta");
+const trendModalClose = document.getElementById("trendModalClose");
+
+async function openTrendModal(sym, kind) {
+  if (!trendModal) return;
+  const isVol = kind === "vol";
+  trendModalTitle.textContent = `${sym} — ${isVol ? "Volume" : "Price"} (5Y)`;
+  trendModalMeta.textContent = "Loading…";
+  trendModal.classList.add("open");
+  document.body.style.overflow = "hidden";
+  try {
+    const series = await fetchSeries(sym); // cached from the table load
+    const labels = series.dates;
+    const data   = isVol ? series.volumes : series.closes;
+    const color  = isVol ? "#fbbf24" : "#38bdf8";
+    if (trendModalChart) trendModalChart.destroy();
+    trendModalChart = new Chart(document.getElementById("trendModalChart"), {
+      type: isVol ? "bar" : "line",
+      data: { labels, datasets: [{
+        label: `${sym} ${isVol ? "Volume" : "Close"}`, data,
+        borderColor: color, backgroundColor: isVol ? color : "rgba(56,189,248,0.08)",
+        fill: !isVol, pointRadius: 0, borderWidth: isVol ? 0 : 2, tension: 0.1,
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        scales: {
+          x: { ticks: { color: "#94a3b8", maxTicksLimit: 12 }, grid: { color: "#1f2940" } },
+          y: { ticks: { color: "#94a3b8", callback: v => isVol ? Intl.NumberFormat("en", { notation: "compact" }).format(v) : v }, grid: { color: "#1f2940" } },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+    const valid = data.filter(v => v != null);
+    const lo = Math.min(...valid), hi = Math.max(...valid);
+    const fmt = v => isVol ? v.toLocaleString() : `$${v.toFixed(2)}`;
+    trendModalMeta.textContent = `${labels[0]} → ${labels[labels.length - 1]} · ${valid.length} trading days · range ${fmt(lo)}–${fmt(hi)}`;
+  } catch {
+    trendModalMeta.textContent = "Could not load data.";
+  }
+}
+
+function closeTrendModal() {
+  if (!trendModal) return;
+  trendModal.classList.remove("open");
+  document.body.style.overflow = "";
+  if (trendModalChart) { trendModalChart.destroy(); trendModalChart = null; }
+}
+
+if (trendModalClose) trendModalClose.addEventListener("click", closeTrendModal);
+if (trendModal) trendModal.addEventListener("click", e => { if (e.target === trendModal) closeTrendModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeTrendModal(); });
+if (etfBody) etfBody.addEventListener("click", e => {
+  const row = e.target.closest(".trend-clickable");
+  if (row && row.dataset.sym) openTrendModal(row.dataset.sym, row.dataset.kind);
+});
+
 // ---- Default ticker: load CSGP immediately on open ----
-const DEFAULT_TICKER = "NVDA";
+const DEFAULT_TICKER = "GS";
 tickerInput.value = DEFAULT_TICKER;
 analyzeTicker();

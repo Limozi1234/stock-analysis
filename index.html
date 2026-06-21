@@ -4,8 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://cdn.jsdelivr.net https://query1.finance.yahoo.com https://query2.finance.yahoo.com; base-uri 'self'; object-src 'none'" />
-<title>Stock Analysis Tool</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E" />
+<title>Buy The Trend</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9A%80%3C/text%3E%3C/svg%3E" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body class="font-sans">
@@ -14,9 +14,9 @@
   <header class="sticky top-0 z-20 border-b border-edge/70 bg-bg/70 backdrop-blur-xl">
     <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4">
       <h1 class="flex items-center gap-3 text-xl font-bold tracking-tight sm:text-2xl">
-        <span class="logo-badge">📈</span>
+        <span class="logo-badge">🚀</span>
         <span class="flex flex-col leading-none">
-          <span class="brand-text">Stock Analysis Tool</span>
+          <span class="brand-text">Buy The Trend</span>
           <span class="mt-1 text-[0.65rem] font-medium uppercase tracking-[0.25em] text-muted">Markets · Metrics · Momentum</span>
         </span>
       </h1>
@@ -27,6 +27,7 @@
     <nav class="mx-auto flex max-w-6xl gap-1 px-4">
       <button class="tab active" data-tab="analysis">Analysis</button>
       <button class="tab" data-tab="compare">Compare</button>
+      <button class="tab" data-tab="etfs">ETFs</button>
     </nav>
   </header>
 
@@ -41,7 +42,6 @@
                  placeholder="Search a ticker symbol (e.g. NVDA)" autocomplete="off" spellcheck="false" />
         </div>
         <button id="searchBtn" class="btn-primary">Analyze</button>
-        <button id="compareBtn" class="btn-ghost">Add to Compare</button>
         <span id="status" class="basis-full text-sm text-muted sm:basis-auto"></span>
       </section>
 
@@ -77,9 +77,9 @@
       </section>
 
       <section class="panel p-4">
-        <h2 class="mb-3 text-lg font-semibold">Comparison (Normalized % Change)</h2>
-        <div id="compareList" class="mb-3 flex flex-wrap gap-2"></div>
-        <div class="relative h-[400px]"><canvas id="compareChart"></canvas></div>
+        <h2 class="mb-1 text-lg font-semibold">Recent Earnings Reports</h2>
+        <p class="mb-3 text-sm text-muted">Last four periodic filings from SEC EDGAR. Click a card to open the report; diluted EPS is highlighted vs the prior period.</p>
+        <div id="earningsList" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"></div>
       </section>
     </main>
   </div>
@@ -101,6 +101,34 @@
         </table>
       </div>
     </main>
+  </div>
+
+  <!-- ETFS TAB -->
+  <div class="tab-panel" id="tab-etfs">
+    <main class="mx-auto max-w-6xl space-y-6 px-6 py-8">
+      <section class="panel p-5">
+        <h2 class="text-lg font-semibold">Popular ETFs</h2>
+        <p class="mt-1 mb-4 text-sm text-muted">A curated reference of widely-traded exchange-traded funds. Click a symbol to analyze it.</p>
+        <div class="scroll-thin overflow-x-auto">
+          <table class="etf-table" id="etfTable">
+            <thead><tr><th class="w-32">Symbol</th><th>Description</th><th class="text-right">Latest Volume</th><th>Trend (3M)</th></tr></thead>
+            <tbody id="etfBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Trend detail modal -->
+  <div id="trendModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="trendModalTitle">
+    <div class="modal-dialog">
+      <div class="modal-head">
+        <h3 id="trendModalTitle" class="text-lg font-semibold">—</h3>
+        <button id="trendModalClose" class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body"><div class="relative h-[440px]"><canvas id="trendModalChart"></canvas></div></div>
+      <div id="trendModalMeta" class="modal-meta"></div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"

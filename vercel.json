@@ -6,7 +6,8 @@
   "rewrites": [
     { "source": "/api/yf/:path*", "destination": "https://query1.finance.yahoo.com/:path*" },
     { "source": "/api/yf2/:path*", "destination": "https://query2.finance.yahoo.com/:path*" },
-    { "source": "/api/st/:path*", "destination": "https://api.stocktwits.com/:path*" }
+    { "source": "/api/st/:path*", "destination": "https://api.stocktwits.com/:path*" },
+    { "source": "/api/sec/:path*", "destination": "https://data.sec.gov/:path*" }
   ],
   "headers": [
     {

@@ -228,4 +228,67 @@
     @apply bg-bg/80 text-[0.7rem] font-semibold uppercase tracking-widest text-brand/70;
   }
   .metric-col { @apply min-w-[160px]; }
+
+  /* ETF reference table -------------------------------------------- */
+  .etf-table { @apply w-full border-collapse text-sm; }
+  .etf-table th {
+    @apply whitespace-nowrap border-b border-edge bg-surface2/50 px-4 py-3
+           text-left text-[0.7rem] font-semibold uppercase tracking-wider text-muted;
+  }
+  .etf-table td { @apply border-b border-edge/50 px-4 py-3 align-top; }
+  .etf-table tr:hover td { @apply bg-surface2/40; }
+  .etf-link {
+    @apply cursor-pointer rounded-md font-semibold tracking-tight text-brand transition
+           hover:text-ink hover:underline
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50;
+  }
+  .etf-desc { @apply text-muted; }
+  .etf-vol { @apply whitespace-nowrap text-right font-medium tabular-nums text-ink; }
+  .etf-trend { @apply whitespace-nowrap; }
+  .trend-row { @apply flex items-center gap-2; }
+  .trend-row + .trend-row { @apply mt-1; }
+  .trend-tag { @apply w-7 text-[0.6rem] font-semibold uppercase tracking-wider text-muted; }
+  .etf-trend .spark { @apply inline-block h-[18px] w-20 align-middle; }
+  .spark-chg { @apply inline-block w-12 text-right text-xs font-semibold tabular-nums; }
+  .spark-chg.positive { @apply text-up; }
+  .spark-chg.negative { @apply text-down; }
+  .spark-chg.muted { @apply text-muted; }
+  .trend-clickable {
+    @apply -mx-1 cursor-pointer rounded-md px-1 transition hover:bg-surface2/70;
+  }
+
+  /* Trend detail modal --------------------------------------------- */
+  .modal-overlay {
+    @apply fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4 backdrop-blur-sm;
+  }
+  .modal-overlay.open { @apply flex; }
+  .modal-dialog {
+    @apply w-full max-w-3xl overflow-hidden rounded-2xl border border-edge bg-surface
+           shadow-2xl shadow-black/50;
+  }
+  .modal-head { @apply flex items-center justify-between border-b border-edge px-5 py-4; }
+  .modal-close {
+    @apply grid h-8 w-8 place-items-center rounded-lg text-muted transition
+           hover:bg-edge hover:text-ink;
+  }
+  .modal-body { @apply p-5; }
+  .modal-meta { @apply border-t border-edge px-5 py-3 text-sm tabular-nums text-muted; }
+
+  /* Earnings report cards (Analysis tab) --------------------------- */
+  .earnings-card {
+    @apply flex flex-col gap-1 rounded-xl border border-edge
+           bg-gradient-to-b from-surface/85 to-surface2/40 p-4 no-underline
+           transition-all duration-200
+           hover:-translate-y-1 hover:border-brand/45 hover:shadow-xl hover:shadow-brand/10;
+  }
+  .earnings-card .label {
+    @apply text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted;
+  }
+  .earnings-period { @apply text-xs text-muted; }
+  .earnings-eps { @apply mt-1 text-3xl font-bold tabular-nums tracking-tight text-ink; }
+  .earnings-eps.positive { @apply text-up; }
+  .earnings-eps.negative { @apply text-down; }
+  .earnings-arrow { @apply text-base; }
+  .earnings-eps-label { @apply text-[0.7rem] font-medium uppercase tracking-wider text-muted; }
+  .earnings-filed { @apply mt-2 text-xs font-medium text-brand; }
 }

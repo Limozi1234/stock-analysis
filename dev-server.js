@@ -8,9 +8,10 @@ const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 
 // Same mapping as vercel.json "rewrites".
 const PROXIES = {
-  "/api/yf/":  "https://query1.finance.yahoo.com/",
-  "/api/yf2/": "https://query2.finance.yahoo.com/",
-  "/api/st/":  "https://api.stocktwits.com/",
+  "/api/yf/":   "https://query1.finance.yahoo.com/",
+  "/api/yf2/":  "https://query2.finance.yahoo.com/",
+  "/api/st/":   "https://api.stocktwits.com/",
+  "/api/sec/":  "https://data.sec.gov/",
 };
 
 const server = Bun.serve({
