@@ -11,15 +11,16 @@
 <body class="font-sans">
 
   <!-- Header -->
-  <header class="sticky top-0 z-20 border-b border-edge bg-surface/80 backdrop-blur-md">
+  <header class="sticky top-0 z-20 border-b border-edge/70 bg-bg/70 backdrop-blur-xl">
     <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4">
-      <h1 class="flex items-center gap-2 text-xl font-bold tracking-tight sm:text-2xl">
-        <span>📈</span>
-        <span class="brand-text">
-          Stock Analysis Tool
+      <h1 class="flex items-center gap-3 text-xl font-bold tracking-tight sm:text-2xl">
+        <span class="logo-badge">📈</span>
+        <span class="flex flex-col leading-none">
+          <span class="brand-text">Stock Analysis Tool</span>
+          <span class="mt-1 text-[0.65rem] font-medium uppercase tracking-[0.25em] text-muted">Markets · Metrics · Momentum</span>
         </span>
       </h1>
-      <div class="text-xs text-muted">For informational and entertainment purposes only — not financial advice.</div>
+      <div class="max-w-[16rem] text-right text-xs leading-snug text-muted">For informational and entertainment purposes only — not financial advice.</div>
     </div>
 
     <!-- Tabs -->
@@ -33,15 +34,18 @@
   <div class="tab-panel active" id="tab-analysis">
     <main class="mx-auto max-w-6xl space-y-6 px-6 py-8">
 
-      <section class="panel flex flex-wrap items-center gap-3 p-4">
-        <input type="text" id="tickerInput" class="field min-w-[200px] flex-1"
-               placeholder="Enter ticker symbol (e.g. AAPL)" autocomplete="off" spellcheck="false" />
+      <section class="panel command-bar flex flex-wrap items-center gap-3 p-4">
+        <div class="relative min-w-[220px] flex-1">
+          <span class="pointer-events-none absolute inset-y-0 left-4 flex items-center text-muted">🔍</span>
+          <input type="text" id="tickerInput" class="field field-search w-full"
+                 placeholder="Search a ticker symbol (e.g. NVDA)" autocomplete="off" spellcheck="false" />
+        </div>
         <button id="searchBtn" class="btn-primary">Analyze</button>
         <button id="compareBtn" class="btn-ghost">Add to Compare</button>
         <span id="status" class="basis-full text-sm text-muted sm:basis-auto"></span>
       </section>
 
-      <div id="statName" class="text-lg font-semibold"></div>
+      <div id="statName" class="hero-name"></div>
 
       <section class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" id="statsSection" hidden>
         <div class="stat-card"><span class="label">Price</span><span class="value" id="statPrice">--</span></div>

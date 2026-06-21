@@ -6,12 +6,12 @@
  * keeps legacy var(--muted) usages in app.js inline styles working.
  * ------------------------------------------------------------------ */
 @theme {
-  --color-bg:       #070b16;
-  --color-surface:  #0f1729;
-  --color-surface2: #18213a;
-  --color-edge:     #243049;
-  --color-ink:      #eef2fb;
-  --color-muted:    #8e9cba;
+  --color-bg:       #060912;
+  --color-surface:  #0e1626;
+  --color-surface2: #16203a;
+  --color-edge:     #232f49;
+  --color-ink:      #f0f4fc;
+  --color-muted:    #8a98b8;
   --color-brand:    #38bdf8;
   --color-brand2:   #a78bfa;
   --color-up:       #34d399;
@@ -19,12 +19,12 @@
 
   --font-sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, sans-serif;
-
-  --shadow-glow: 0 0 0 1px rgba(56, 189, 248, 0.08), 0 18px 40px -18px rgba(56, 189, 248, 0.45);
+  --font-mono: "SFMono-Regular", "JetBrains Mono", ui-monospace, "Cascadia Code",
+    Menlo, Consolas, monospace;
 }
 
 :root {
-  --muted: #8e9cba;
+  --muted: #8a98b8;
   --green: #34d399;
   --red:   #fb7185;
 }
@@ -38,15 +38,14 @@
   body {
     @apply min-h-screen bg-bg text-ink text-[17px] antialiased;
     background-image:
-      radial-gradient(70rem 70rem at 110% -15%, rgba(56, 189, 248, 0.14), transparent 60%),
-      radial-gradient(55rem 55rem at -10% 0%, rgba(167, 139, 250, 0.12), transparent 55%),
-      radial-gradient(40rem 40rem at 50% 120%, rgba(52, 211, 153, 0.06), transparent 60%);
+      radial-gradient(75rem 75rem at 110% -20%, rgba(56, 189, 248, 0.16), transparent 60%),
+      radial-gradient(60rem 60rem at -12% -5%, rgba(167, 139, 250, 0.14), transparent 55%),
+      radial-gradient(45rem 45rem at 50% 125%, rgba(52, 211, 153, 0.07), transparent 60%);
     background-attachment: fixed;
   }
 
   ::selection { @apply bg-brand/30 text-white; }
 
-  /* Pretty scrollbars on the compare table */
   .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--color-edge) transparent; }
   .scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }
   .scroll-thin::-webkit-scrollbar-thumb { background: var(--color-edge); border-radius: 9999px; }
@@ -56,97 +55,120 @@
 /* ------------------------------------------------------------------ *
  * Keyframes
  * ------------------------------------------------------------------ */
-@keyframes gradient-pan {
-  0%, 100% { background-position: 0% 50%; }
-  50%      { background-position: 100% 50%; }
-}
-@keyframes rise {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes shimmer {
-  100% { transform: translateX(100%); }
-}
+@keyframes gradient-pan { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(56,189,248,0.35); } 70% { box-shadow: 0 0 0 10px rgba(56,189,248,0); } 100% { box-shadow: 0 0 0 0 rgba(56,189,248,0); } }
 
 /* ------------------------------------------------------------------ *
- * Components — these class names are referenced by app.js, so they
- * must stay stable. Layout lives in index.html via utilities.
+ * Components — class names referenced by app.js must stay stable.
  * ------------------------------------------------------------------ */
 @layer components {
 
-  /* Animated brand wordmark ----------------------------------------- */
+  /* Brand / logo --------------------------------------------------- */
+  .logo-badge {
+    @apply grid h-10 w-10 place-items-center rounded-xl border border-edge text-xl
+           shadow-lg shadow-brand/20;
+    background: linear-gradient(145deg, rgba(56,189,248,0.18), rgba(167,139,250,0.18));
+  }
   .brand-text {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(110deg, #38bdf8, #a78bfa, #34d399, #38bdf8);
+    background-image: linear-gradient(110deg, #5cc8fb, #a78bfa, #34d399, #5cc8fb);
     background-size: 300% 100%;
-    animation: gradient-pan 8s ease infinite;
+    animation: gradient-pan 9s ease infinite;
   }
 
-  /* Buttons & inputs ------------------------------------------------ */
+  /* Hero company name ---------------------------------------------- */
+  .hero-name {
+    @apply text-2xl font-extrabold tracking-tight text-ink sm:text-3xl;
+  }
+  .hero-name:not(:empty)::before {
+    content: "";
+    @apply mr-3 inline-block h-6 w-1.5 translate-y-0.5 rounded-full align-middle;
+    background: linear-gradient(180deg, #38bdf8, #a78bfa);
+  }
+
+  /* Buttons & inputs ----------------------------------------------- */
   .btn-primary {
     @apply relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-xl px-5 py-2.5
-           text-sm font-semibold tracking-tight transition-all duration-200
+           text-sm font-semibold tracking-tight text-slate-950 transition-all duration-200
+           shadow-lg shadow-brand/25
            focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60
-           text-slate-950 shadow-lg shadow-brand/25
            hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand/40 active:translate-y-0 active:scale-[.98]
            disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0;
-    background-image: linear-gradient(120deg, #5cc8fb, #38bdf8 45%, #6aa7fb);
+    background-image: linear-gradient(120deg, #67d0fb, #38bdf8 45%, #7aa9fb);
   }
-  /* Sheen sweep on hover */
   .btn-primary::after {
     content: "";
     @apply pointer-events-none absolute inset-0 -translate-x-full;
-    background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.35), transparent 70%);
+    background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.4), transparent 70%);
   }
   .btn-primary:hover::after { animation: shimmer 0.9s ease; }
 
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5
-           text-sm font-semibold tracking-tight transition-all duration-200
+           text-sm font-semibold tracking-tight text-ink transition-all duration-200
+           border border-edge bg-surface/60
            focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60
-           border border-edge bg-surface/60 text-ink
            hover:-translate-y-0.5 hover:border-brand/50 hover:bg-surface hover:shadow-lg hover:shadow-black/30
            active:translate-y-0
            disabled:cursor-not-allowed disabled:opacity-50;
   }
   .field {
-    @apply w-full rounded-xl border border-edge bg-surface/70 px-4 py-2.5 text-base
+    @apply w-full rounded-xl border border-edge bg-surface/70 px-4 py-3 text-base
            text-ink placeholder:text-muted/60 transition-all duration-200
            focus:outline-none focus:border-brand/60 focus:bg-surface focus:ring-4 focus:ring-brand/20;
+  }
+  .field-search {
+    @apply pl-11 font-medium tracking-wide;
+  }
+
+  /* Command bar (search panel) gets a stronger presence ------------ */
+  .command-bar {
+    @apply ring-1 ring-inset ring-white/5;
   }
 
   /* Surfaces -------------------------------------------------------- */
   .panel {
-    @apply relative rounded-2xl border border-edge bg-surface/60 backdrop-blur-md
-           shadow-2xl shadow-black/30;
+    @apply relative rounded-2xl border border-edge bg-surface/55 backdrop-blur-md
+           shadow-2xl shadow-black/40;
   }
-  /* Subtle top highlight line */
   .panel::before {
     content: "";
     @apply pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-2xl;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
   }
 
   /* Stat grid ------------------------------------------------------- */
   .stat-card {
-    @apply relative flex flex-col gap-1 overflow-hidden rounded-xl border border-edge
-           bg-gradient-to-b from-surface/80 to-surface2/40 p-4
+    @apply relative flex flex-col gap-1.5 overflow-hidden rounded-xl border border-edge/80
+           bg-gradient-to-b from-surface/85 to-surface2/40 p-4
            transition-all duration-200
-           hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/10;
+           hover:-translate-y-1 hover:border-brand/45 hover:shadow-xl hover:shadow-brand/10;
     animation: rise 0.5s ease both;
   }
-  /* Accent glow that appears on hover */
+  /* Left accent rail that lights up on hover */
+  .stat-card::before {
+    content: "";
+    @apply pointer-events-none absolute inset-y-0 left-0 w-[3px] opacity-0 transition-opacity duration-300;
+    background: linear-gradient(180deg, #38bdf8, #a78bfa);
+  }
+  .stat-card:hover::before { @apply opacity-100; }
+  /* Corner glow on hover */
   .stat-card::after {
     content: "";
-    @apply pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full opacity-0 transition-opacity duration-300;
-    background: radial-gradient(circle, rgba(56,189,248,0.25), transparent 70%);
+    @apply pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full opacity-0 transition-opacity duration-300;
+    background: radial-gradient(circle, rgba(56,189,248,0.28), transparent 70%);
   }
   .stat-card:hover::after { @apply opacity-100; }
   .stat-card.wide { @apply sm:col-span-2; }
   .stat-card .label {
-    @apply text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted;
+    @apply text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted;
   }
-  .stat-card .value { @apply text-2xl font-bold tabular-nums tracking-tight text-ink; }
+  .stat-card .value {
+    @apply text-2xl font-bold tabular-nums tracking-tight text-ink;
+    font-variant-numeric: tabular-nums;
+  }
 
   /* Value tone modifiers (set dynamically in JS) ------------------- */
   .value.positive, .positive { @apply text-up; }
@@ -163,9 +185,7 @@
   .social-row { @apply mb-2 text-sm text-muted; }
   .social-count { @apply font-medium; }
   .sentiment-bar-wrap { @apply flex flex-col gap-1.5; }
-  .sentiment-bar {
-    @apply flex h-2.5 w-full overflow-hidden rounded-full bg-edge shadow-inner;
-  }
+  .sentiment-bar { @apply flex h-2.5 w-full overflow-hidden rounded-full bg-edge shadow-inner; }
   .sentiment-bull { @apply bg-gradient-to-r from-up/80 to-up transition-all duration-500; }
   .sentiment-bear { @apply bg-gradient-to-r from-down to-down/80 transition-all duration-500; }
   .sentiment-labels { @apply flex flex-wrap gap-4 text-sm; }
@@ -197,9 +217,7 @@
            text-left font-semibold text-muted;
   }
   .cmp-table th.stock-col { @apply min-w-[120px] text-right text-brand; }
-  .cmp-table td {
-    @apply whitespace-nowrap border-b border-edge/50 px-4 py-2.5;
-  }
+  .cmp-table td { @apply whitespace-nowrap border-b border-edge/50 px-4 py-2.5; }
   .cmp-table td.metric-col {
     @apply sticky left-0 min-w-[160px] bg-surface text-[0.78rem]
            uppercase tracking-wide text-muted;
