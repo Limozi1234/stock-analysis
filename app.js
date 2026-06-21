@@ -519,3 +519,8 @@ async function cmpAddStock() {
 
 cmpAddBtn.addEventListener("click", cmpAddStock);
 cmpTickerInput.addEventListener("keydown", e => { if (e.key==="Enter") cmpAddStock(); });
+
+// ---- Default ticker: load CSGP immediately on open ----
+const DEFAULT_TICKER = "CSGP";
+tickerInput.value = DEFAULT_TICKER;
+analyzeTicker();

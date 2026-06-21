@@ -6,24 +6,27 @@
  * keeps legacy var(--muted) usages in app.js inline styles working.
  * ------------------------------------------------------------------ */
 @theme {
-  --color-bg:       #0b1120;
-  --color-surface:  #131c31;
-  --color-surface2: #1b2540;
-  --color-edge:     #27324d;
-  --color-ink:      #e8edf7;
-  --color-muted:    #93a1bd;
+  --color-bg:       #070b16;
+  --color-surface:  #0f1729;
+  --color-surface2: #18213a;
+  --color-edge:     #243049;
+  --color-ink:      #eef2fb;
+  --color-muted:    #8e9cba;
   --color-brand:    #38bdf8;
-  --color-up:       #4ade80;
-  --color-down:     #f87171;
+  --color-brand2:   #a78bfa;
+  --color-up:       #34d399;
+  --color-down:     #fb7185;
 
   --font-sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, sans-serif;
+
+  --shadow-glow: 0 0 0 1px rgba(56, 189, 248, 0.08), 0 18px 40px -18px rgba(56, 189, 248, 0.45);
 }
 
 :root {
-  --muted: #93a1bd;
-  --green: #4ade80;
-  --red:   #f87171;
+  --muted: #8e9cba;
+  --green: #34d399;
+  --red:   #fb7185;
 }
 
 /* ------------------------------------------------------------------ *
@@ -35,8 +38,9 @@
   body {
     @apply min-h-screen bg-bg text-ink text-[17px] antialiased;
     background-image:
-      radial-gradient(60rem 60rem at 110% -10%, rgba(56, 189, 248, 0.10), transparent 60%),
-      radial-gradient(50rem 50rem at -10% 0%, rgba(167, 139, 250, 0.08), transparent 55%);
+      radial-gradient(70rem 70rem at 110% -15%, rgba(56, 189, 248, 0.14), transparent 60%),
+      radial-gradient(55rem 55rem at -10% 0%, rgba(167, 139, 250, 0.12), transparent 55%),
+      radial-gradient(40rem 40rem at 50% 120%, rgba(52, 211, 153, 0.06), transparent 60%);
     background-attachment: fixed;
   }
 
@@ -46,6 +50,22 @@
   .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--color-edge) transparent; }
   .scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }
   .scroll-thin::-webkit-scrollbar-thumb { background: var(--color-edge); border-radius: 9999px; }
+  .scroll-thin::-webkit-scrollbar-thumb:hover { background: #324266; }
+}
+
+/* ------------------------------------------------------------------ *
+ * Keyframes
+ * ------------------------------------------------------------------ */
+@keyframes gradient-pan {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
 }
 
 /* ------------------------------------------------------------------ *
@@ -54,45 +74,79 @@
  * ------------------------------------------------------------------ */
 @layer components {
 
+  /* Animated brand wordmark ----------------------------------------- */
+  .brand-text {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(110deg, #38bdf8, #a78bfa, #34d399, #38bdf8);
+    background-size: 300% 100%;
+    animation: gradient-pan 8s ease infinite;
+  }
+
   /* Buttons & inputs ------------------------------------------------ */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
-           text-sm font-semibold transition
+    @apply relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-xl px-5 py-2.5
+           text-sm font-semibold tracking-tight transition-all duration-200
            focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60
-           bg-brand text-slate-950 shadow-lg shadow-brand/20
-           hover:brightness-110 active:scale-[.98]
-           disabled:cursor-not-allowed disabled:opacity-50;
+           text-slate-950 shadow-lg shadow-brand/25
+           hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand/40 active:translate-y-0 active:scale-[.98]
+           disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0;
+    background-image: linear-gradient(120deg, #5cc8fb, #38bdf8 45%, #6aa7fb);
   }
+  /* Sheen sweep on hover */
+  .btn-primary::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0 -translate-x-full;
+    background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.35), transparent 70%);
+  }
+  .btn-primary:hover::after { animation: shimmer 0.9s ease; }
+
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
-           text-sm font-semibold transition
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5
+           text-sm font-semibold tracking-tight transition-all duration-200
            focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60
            border border-edge bg-surface/60 text-ink
-           hover:border-brand/50 hover:bg-surface
+           hover:-translate-y-0.5 hover:border-brand/50 hover:bg-surface hover:shadow-lg hover:shadow-black/30
+           active:translate-y-0
            disabled:cursor-not-allowed disabled:opacity-50;
   }
   .field {
-    @apply w-full rounded-lg border border-edge bg-surface/70 px-4 py-2.5 text-base
-           text-ink placeholder:text-muted/70 transition
-           focus:outline-none focus:border-brand/60 focus:ring-2 focus:ring-brand/30;
+    @apply w-full rounded-xl border border-edge bg-surface/70 px-4 py-2.5 text-base
+           text-ink placeholder:text-muted/60 transition-all duration-200
+           focus:outline-none focus:border-brand/60 focus:bg-surface focus:ring-4 focus:ring-brand/20;
   }
 
   /* Surfaces -------------------------------------------------------- */
   .panel {
-    @apply rounded-2xl border border-edge bg-surface/70 backdrop-blur-sm
-           shadow-xl shadow-black/20;
+    @apply relative rounded-2xl border border-edge bg-surface/60 backdrop-blur-md
+           shadow-2xl shadow-black/30;
+  }
+  /* Subtle top highlight line */
+  .panel::before {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-2xl;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
   }
 
   /* Stat grid ------------------------------------------------------- */
   .stat-card {
-    @apply flex flex-col gap-1 rounded-xl border border-edge bg-surface/70 p-4
-           transition hover:border-brand/40 hover:bg-surface;
+    @apply relative flex flex-col gap-1 overflow-hidden rounded-xl border border-edge
+           bg-gradient-to-b from-surface/80 to-surface2/40 p-4
+           transition-all duration-200
+           hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/10;
+    animation: rise 0.5s ease both;
   }
+  /* Accent glow that appears on hover */
+  .stat-card::after {
+    content: "";
+    @apply pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full opacity-0 transition-opacity duration-300;
+    background: radial-gradient(circle, rgba(56,189,248,0.25), transparent 70%);
+  }
+  .stat-card:hover::after { @apply opacity-100; }
   .stat-card.wide { @apply sm:col-span-2; }
   .stat-card .label {
-    @apply text-[0.7rem] font-medium uppercase tracking-wider text-muted;
+    @apply text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-muted;
   }
-  .stat-card .value { @apply text-2xl font-bold tabular-nums text-ink; }
+  .stat-card .value { @apply text-2xl font-bold tabular-nums tracking-tight text-ink; }
 
   /* Value tone modifiers (set dynamically in JS) ------------------- */
   .value.positive, .positive { @apply text-up; }
@@ -101,7 +155,7 @@
   /* Annual returns ------------------------------------------------- */
   .annual-returns { @apply mt-1.5 flex flex-wrap gap-4; }
   .ar-row { @apply flex min-w-[60px] flex-col gap-0.5; }
-  .ar-year { @apply text-xs uppercase text-muted; }
+  .ar-year { @apply text-xs uppercase tracking-wide text-muted; }
   .ar-avg { @apply border-l border-edge pl-4; }
 
   /* Social sentiment ----------------------------------------------- */
@@ -110,16 +164,16 @@
   .social-count { @apply font-medium; }
   .sentiment-bar-wrap { @apply flex flex-col gap-1.5; }
   .sentiment-bar {
-    @apply flex h-2.5 w-full overflow-hidden rounded-full bg-edge;
+    @apply flex h-2.5 w-full overflow-hidden rounded-full bg-edge shadow-inner;
   }
-  .sentiment-bull { @apply bg-up; }
-  .sentiment-bear { @apply bg-down; }
+  .sentiment-bull { @apply bg-gradient-to-r from-up/80 to-up transition-all duration-500; }
+  .sentiment-bear { @apply bg-gradient-to-r from-down to-down/80 transition-all duration-500; }
   .sentiment-labels { @apply flex flex-wrap gap-4 text-sm; }
 
   /* Tabs ----------------------------------------------------------- */
   .tab {
-    @apply -mb-px cursor-pointer border-b-2 border-transparent px-5 py-3
-           text-sm font-medium text-muted transition hover:text-ink;
+    @apply relative -mb-px cursor-pointer border-b-2 border-transparent px-5 py-3
+           text-sm font-semibold text-muted transition-colors duration-200 hover:text-ink;
   }
   .tab.active { @apply border-brand text-brand; }
   .tab-panel { @apply hidden; }
@@ -128,7 +182,8 @@
   /* Compare chips -------------------------------------------------- */
   .compare-chip {
     @apply inline-flex items-center gap-1.5 rounded-full border border-edge
-           bg-bg/60 px-3 py-1 text-sm;
+           bg-surface2/60 px-3 py-1 text-sm font-medium shadow-sm transition
+           hover:border-brand/40;
   }
   .compare-chip button {
     @apply grid h-4 w-4 place-items-center rounded-full text-muted
@@ -152,7 +207,7 @@
   .cmp-table td.stock-val { @apply text-right font-semibold tabular-nums; }
   .cmp-table tr:hover td { @apply bg-surface2/70; }
   .cmp-table .group-header td {
-    @apply bg-bg/80 text-[0.7rem] uppercase tracking-widest text-muted;
+    @apply bg-bg/80 text-[0.7rem] font-semibold uppercase tracking-widest text-brand/70;
   }
   .metric-col { @apply min-w-[160px]; }
 }
