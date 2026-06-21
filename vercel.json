@@ -2,5 +2,20 @@
   "buildCommand": "bun run build",
   "installCommand": "bun install",
   "outputDirectory": ".",
-  "framework": null
+  "framework": null,
+  "rewrites": [
+    { "source": "/api/yf/:path*", "destination": "https://query1.finance.yahoo.com/:path*" },
+    { "source": "/api/yf2/:path*", "destination": "https://query2.finance.yahoo.com/:path*" },
+    { "source": "/api/st/:path*", "destination": "https://api.stocktwits.com/:path*" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    }
+  ]
 }

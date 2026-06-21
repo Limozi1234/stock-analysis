@@ -1,4 +1,5 @@
-const ST_BASE  = "https://api.stocktwits.com/api/2/streams/symbol";
+// StockTwits via same-origin Vercel rewrite (browsers can't call it directly — CORS).
+const ST_BASE  = "/api/st/api/2/streams/symbol";
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 // Allowed ticker format: letters, digits, dot, hyphen, caret (e.g. AAPL, BRK.B, ^GSPC).
@@ -12,13 +13,19 @@ function normalizeSymbol(raw) {
 
 // Yahoo Finance endpoints to try in order. `symbol` is validated by normalizeSymbol
 // before reaching here; we still encode it as defense-in-depth.
+//
+// Yahoo sends no CORS headers, so a direct browser fetch is blocked on any deployed
+// origin. Primary path is a same-origin Vercel rewrite (/api/yf -> query1 Yahoo) which
+// proxies server-side. The direct hosts remain as fallbacks for environments where the
+// proxy is unavailable (they'll CORS-fail harmlessly and we move on).
 const YF_URLS = (symbol) => {
-  const enc = encodeURIComponent(symbol);
-  const yf = (host) => `https://${host}/v8/finance/chart/${enc}?interval=1d&range=5y`;
+  const enc  = encodeURIComponent(symbol);
+  const path = `v8/finance/chart/${enc}?interval=1d&range=5y`;
   return [
-    yf("query2.finance.yahoo.com"),
-    yf("query1.finance.yahoo.com"),
-    `https://corsproxy.io/?${encodeURIComponent(yf("query1.finance.yahoo.com"))}`,
+    `/api/yf/${path}`,
+    `/api/yf2/${path}`,
+    `https://query1.finance.yahoo.com/${path}`,
+    `https://query2.finance.yahoo.com/${path}`,
   ];
 };
 
