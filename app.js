@@ -1,12 +1,26 @@
 const ST_BASE  = "https://api.stocktwits.com/api/2/streams/symbol";
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-// Yahoo Finance endpoints to try in order
-const YF_URLS = (symbol) => [
-  `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5y`,
-  `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5y`,
-  `https://corsproxy.io/?${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5y`)}`,
-];
+// Allowed ticker format: letters, digits, dot, hyphen, caret (e.g. AAPL, BRK.B, ^GSPC).
+const TICKER_RE = /^[A-Z0-9.^-]{1,15}$/;
+
+// Validate + normalize a user-supplied ticker. Returns "" if invalid.
+function normalizeSymbol(raw) {
+  const s = (raw || "").trim().toUpperCase();
+  return TICKER_RE.test(s) ? s : "";
+}
+
+// Yahoo Finance endpoints to try in order. `symbol` is validated by normalizeSymbol
+// before reaching here; we still encode it as defense-in-depth.
+const YF_URLS = (symbol) => {
+  const enc = encodeURIComponent(symbol);
+  const yf = (host) => `https://${host}/v8/finance/chart/${enc}?interval=1d&range=5y`;
+  return [
+    yf("query2.finance.yahoo.com"),
+    yf("query1.finance.yahoo.com"),
+    `https://corsproxy.io/?${encodeURIComponent(yf("query1.finance.yahoo.com"))}`,
+  ];
+};
 
 // ---- DOM refs ----
 const tickerInput      = document.getElementById("tickerInput");
@@ -104,7 +118,7 @@ async function fetchSeries(symbol) {
 
 async function fetchSocial(symbol) {
   try {
-    const res = await fetch(`${ST_BASE}/${symbol}.json`);
+    const res = await fetch(`${ST_BASE}/${encodeURIComponent(symbol)}.json`);
     if (!res.ok) return null;
     return res.json();
   } catch { return null; }
@@ -340,7 +354,7 @@ function renderCompareChips() {
   compareList.innerHTML = "";
   for (const symbol of compareSeries.keys()) {
     const chip = document.createElement("div"); chip.className = "compare-chip";
-    chip.innerHTML = `<span>${symbol}</span>`;
+    const nameSpan = document.createElement("span"); nameSpan.textContent = symbol; chip.appendChild(nameSpan);
     const btn = document.createElement("button"); btn.textContent = "✕";
     btn.addEventListener("click", () => { compareSeries.delete(symbol); renderCompareChips(); renderCompareChart(); });
     chip.appendChild(btn); compareList.appendChild(chip);
@@ -349,8 +363,8 @@ function renderCompareChips() {
 
 // ---- Analysis tab actions ----
 async function analyzeTicker() {
-  const symbol = tickerInput.value.trim().toUpperCase();
-  if (!symbol) { setStatus("Please enter a ticker symbol.", true); return; }
+  const symbol = normalizeSymbol(tickerInput.value);
+  if (!symbol) { setStatus("Please enter a valid ticker symbol (letters, digits, . - ^).", true); return; }
   setStatus(`Loading ${symbol}...`);
   searchBtn.disabled = true;
   try {
@@ -372,8 +386,8 @@ async function analyzeTicker() {
 }
 
 async function addToCompare() {
-  const symbol = tickerInput.value.trim().toUpperCase();
-  if (!symbol) { setStatus("Please enter a ticker symbol.", true); return; }
+  const symbol = normalizeSymbol(tickerInput.value);
+  if (!symbol) { setStatus("Please enter a valid ticker symbol (letters, digits, . - ^).", true); return; }
   if (compareSeries.has(symbol)) { setStatus(`${symbol} already in comparison.`); return; }
   setStatus(`Loading ${symbol}...`); compareBtn.disabled = true;
   try {
@@ -471,7 +485,7 @@ function renderCmpChips() {
   cmpChips.innerHTML = "";
   for (const sym of cmpStocks.keys()) {
     const chip=document.createElement("div"); chip.className="compare-chip";
-    chip.innerHTML=`<span>${sym}</span>`;
+    const nameSpan=document.createElement("span"); nameSpan.textContent=sym; chip.appendChild(nameSpan);
     const btn=document.createElement("button"); btn.textContent="✕";
     btn.addEventListener("click",()=>{ cmpStocks.delete(sym); renderCmpChips(); renderCmpTable(); });
     chip.appendChild(btn); cmpChips.appendChild(chip);
@@ -479,8 +493,8 @@ function renderCmpChips() {
 }
 
 async function cmpAddStock() {
-  const symbol = cmpTickerInput.value.trim().toUpperCase();
-  if (!symbol) { setCmpStatus("Please enter a ticker symbol.", true); return; }
+  const symbol = normalizeSymbol(cmpTickerInput.value);
+  if (!symbol) { setCmpStatus("Please enter a valid ticker symbol (letters, digits, . - ^).", true); return; }
   if (cmpStocks.has(symbol)) { setCmpStatus(`${symbol} already added.`); return; }
   setCmpStatus(`Loading ${symbol}...`); cmpAddBtn.disabled = true;
   try {

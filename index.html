@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://query1.finance.yahoo.com https://query2.finance.yahoo.com https://corsproxy.io https://api.stocktwits.com; base-uri 'self'; object-src 'none'; frame-ancestors 'none'" />
 <title>Stock Analysis Tool</title>
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -135,7 +136,9 @@
     </main>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+          integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4"
+          crossorigin="anonymous"></script>
   <script src="app.js"></script>
 </body>
 </html>
