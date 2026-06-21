@@ -1,0 +1,17 @@
+{
+  "name": "stock-analysis",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Purely client-side stock analysis tool (Yahoo Finance) — bun + Tailwind v4.",
+  "type": "module",
+  "scripts": {
+    "build": "tailwindcss -i ./src/input.css -o ./style.css --minify",
+    "watch": "tailwindcss -i ./src/input.css -o ./style.css --watch",
+    "serve": "bun run ./dev-server.js",
+    "dev": "bun run watch & bun run serve"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "tailwindcss": "^4.1.0"
+  }
+}

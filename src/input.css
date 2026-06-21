@@ -1,0 +1,158 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * Design tokens. Tailwind v4 reads these from @theme to generate
+ * utilities (bg-surface, text-muted, etc.). The plain :root mirror
+ * keeps legacy var(--muted) usages in app.js inline styles working.
+ * ------------------------------------------------------------------ */
+@theme {
+  --color-bg:       #0b1120;
+  --color-surface:  #131c31;
+  --color-surface2: #1b2540;
+  --color-edge:     #27324d;
+  --color-ink:      #e8edf7;
+  --color-muted:    #93a1bd;
+  --color-brand:    #38bdf8;
+  --color-up:       #4ade80;
+  --color-down:     #f87171;
+
+  --font-sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+}
+
+:root {
+  --muted: #93a1bd;
+  --green: #4ade80;
+  --red:   #f87171;
+}
+
+/* ------------------------------------------------------------------ *
+ * Base
+ * ------------------------------------------------------------------ */
+@layer base {
+  html { scroll-behavior: smooth; }
+
+  body {
+    @apply min-h-screen bg-bg text-ink text-[17px] antialiased;
+    background-image:
+      radial-gradient(60rem 60rem at 110% -10%, rgba(56, 189, 248, 0.10), transparent 60%),
+      radial-gradient(50rem 50rem at -10% 0%, rgba(167, 139, 250, 0.08), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::selection { @apply bg-brand/30 text-white; }
+
+  /* Pretty scrollbars on the compare table */
+  .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--color-edge) transparent; }
+  .scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: var(--color-edge); border-radius: 9999px; }
+}
+
+/* ------------------------------------------------------------------ *
+ * Components — these class names are referenced by app.js, so they
+ * must stay stable. Layout lives in index.html via utilities.
+ * ------------------------------------------------------------------ */
+@layer components {
+
+  /* Buttons & inputs ------------------------------------------------ */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+           text-sm font-semibold transition
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60
+           bg-brand text-slate-950 shadow-lg shadow-brand/20
+           hover:brightness-110 active:scale-[.98]
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+           text-sm font-semibold transition
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60
+           border border-edge bg-surface/60 text-ink
+           hover:border-brand/50 hover:bg-surface
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .field {
+    @apply w-full rounded-lg border border-edge bg-surface/70 px-4 py-2.5 text-base
+           text-ink placeholder:text-muted/70 transition
+           focus:outline-none focus:border-brand/60 focus:ring-2 focus:ring-brand/30;
+  }
+
+  /* Surfaces -------------------------------------------------------- */
+  .panel {
+    @apply rounded-2xl border border-edge bg-surface/70 backdrop-blur-sm
+           shadow-xl shadow-black/20;
+  }
+
+  /* Stat grid ------------------------------------------------------- */
+  .stat-card {
+    @apply flex flex-col gap-1 rounded-xl border border-edge bg-surface/70 p-4
+           transition hover:border-brand/40 hover:bg-surface;
+  }
+  .stat-card.wide { @apply sm:col-span-2; }
+  .stat-card .label {
+    @apply text-[0.7rem] font-medium uppercase tracking-wider text-muted;
+  }
+  .stat-card .value { @apply text-2xl font-bold tabular-nums text-ink; }
+
+  /* Value tone modifiers (set dynamically in JS) ------------------- */
+  .value.positive, .positive { @apply text-up; }
+  .value.negative, .negative { @apply text-down; }
+
+  /* Annual returns ------------------------------------------------- */
+  .annual-returns { @apply mt-1.5 flex flex-wrap gap-4; }
+  .ar-row { @apply flex min-w-[60px] flex-col gap-0.5; }
+  .ar-year { @apply text-xs uppercase text-muted; }
+  .ar-avg { @apply border-l border-edge pl-4; }
+
+  /* Social sentiment ----------------------------------------------- */
+  .social-sentiment { @apply mt-1.5; }
+  .social-row { @apply mb-2 text-sm text-muted; }
+  .social-count { @apply font-medium; }
+  .sentiment-bar-wrap { @apply flex flex-col gap-1.5; }
+  .sentiment-bar {
+    @apply flex h-2.5 w-full overflow-hidden rounded-full bg-edge;
+  }
+  .sentiment-bull { @apply bg-up; }
+  .sentiment-bear { @apply bg-down; }
+  .sentiment-labels { @apply flex flex-wrap gap-4 text-sm; }
+
+  /* Tabs ----------------------------------------------------------- */
+  .tab {
+    @apply -mb-px cursor-pointer border-b-2 border-transparent px-5 py-3
+           text-sm font-medium text-muted transition hover:text-ink;
+  }
+  .tab.active { @apply border-brand text-brand; }
+  .tab-panel { @apply hidden; }
+  .tab-panel.active { @apply block; }
+
+  /* Compare chips -------------------------------------------------- */
+  .compare-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-edge
+           bg-bg/60 px-3 py-1 text-sm;
+  }
+  .compare-chip button {
+    @apply grid h-4 w-4 place-items-center rounded-full text-muted
+           transition hover:bg-down/20 hover:text-down;
+  }
+
+  /* Compare table -------------------------------------------------- */
+  .cmp-table { @apply w-full border-collapse text-sm; }
+  .cmp-table th {
+    @apply whitespace-nowrap border-b border-edge bg-surface2/60 px-4 py-2.5
+           text-left font-semibold text-muted;
+  }
+  .cmp-table th.stock-col { @apply min-w-[120px] text-right text-brand; }
+  .cmp-table td {
+    @apply whitespace-nowrap border-b border-edge/50 px-4 py-2.5;
+  }
+  .cmp-table td.metric-col {
+    @apply sticky left-0 min-w-[160px] bg-surface text-[0.78rem]
+           uppercase tracking-wide text-muted;
+  }
+  .cmp-table td.stock-val { @apply text-right font-semibold tabular-nums; }
+  .cmp-table tr:hover td { @apply bg-surface2/70; }
+  .cmp-table .group-header td {
+    @apply bg-bg/80 text-[0.7rem] uppercase tracking-widest text-muted;
+  }
+  .metric-col { @apply min-w-[160px]; }
+}
