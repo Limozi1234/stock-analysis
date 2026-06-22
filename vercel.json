@@ -1,6 +1,7 @@
 {
   "buildCommand": "bun run build",
   "installCommand": "bun install",
+  "outputDirectory": ".",
   "framework": null,
   "rewrites": [
     { "source": "/api/yf/:path*", "destination": "https://query1.finance.yahoo.com/:path*" },
