@@ -28,6 +28,8 @@
       <button class="tab active" data-tab="analysis">Analysis</button>
       <button class="tab" data-tab="compare">Compare</button>
       <button class="tab" data-tab="etfs">ETFs</button>
+      <button class="tab" data-tab="flow">Money Flow</button>
+      <button class="tab" data-tab="gambling">Gambling with Statistics</button>
     </nav>
   </header>
 
@@ -115,6 +117,97 @@
             <tbody id="etfBody"></tbody>
           </table>
         </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MONEY FLOW TAB -->
+  <div class="tab-panel" id="tab-flow">
+    <main class="mx-auto max-w-6xl space-y-6 px-6 py-8">
+
+      <section class="panel command-bar flex flex-wrap items-center gap-3 p-4">
+        <span class="pointer-events-none flex items-center text-muted">💸</span>
+        <select id="flowWindow" class="field max-w-[190px]">
+          <option value="5">Window: 1 Week</option>
+          <option value="21" selected>Window: 1 Month</option>
+          <option value="63">Window: 3 Months</option>
+          <option value="126">Window: 6 Months</option>
+        </select>
+        <button id="flowRefreshBtn" class="btn-primary">↻ Recompute</button>
+        <span id="flowStatus" class="basis-full text-sm text-muted sm:basis-auto"></span>
+      </section>
+
+      <p class="text-xs text-muted">Money-flow proxy from price &amp; volume only: each day's dollar volume (price × shares) is counted as an
+        <span class="positive">inflow</span> on up days and an <span class="negative">outflow</span> on down days, then summed over the window
+        (an on-balance-volume style accumulation/distribution measure). <strong>Flow Bias</strong> normalizes net flow to ±100% of the dollar volume traded,
+        so it compares funds of very different size. This is a rough capital-rotation signal, not measured fund flows — for entertainment, not financial advice.</p>
+
+      <section class="grid grid-cols-1 gap-3 sm:grid-cols-3" id="flowHighlights" hidden>
+        <div class="stat-card"><span class="label">Strongest Inflow</span><span class="value positive" id="flowTopIn">--</span></div>
+        <div class="stat-card"><span class="label">Strongest Outflow</span><span class="value negative" id="flowTopOut">--</span></div>
+        <div class="stat-card"><span class="label">Rotation</span><span class="value" id="flowRotation">--</span></div>
+      </section>
+
+      <section class="panel p-4">
+        <h2 class="mb-1 text-lg font-semibold">Capital Flow by Fund</h2>
+        <p class="mb-3 text-sm text-muted">Accumulation (money in) above the line, distribution (money out) below — sorted by flow bias.</p>
+        <div class="relative" id="flowChartWrap" style="height:640px"><canvas id="flowChart"></canvas></div>
+      </section>
+
+      <section class="panel p-5">
+        <h2 class="text-lg font-semibold">Flow Detail</h2>
+        <p class="mt-1 mb-4 text-sm text-muted">Click a symbol to analyze it. Net flow is signed dollar volume over the window.</p>
+        <div class="scroll-thin overflow-x-auto">
+          <table class="etf-table" id="flowTable">
+            <thead><tr>
+              <th class="w-24">Symbol</th><th>Category</th>
+              <th class="text-right">Price Δ</th><th class="text-right">Avg $ Vol/day</th>
+              <th class="text-right">Net Flow</th><th class="w-48">Flow Bias</th>
+            </tr></thead>
+            <tbody id="flowBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- GAMBLING WITH STATISTICS TAB -->
+  <div class="tab-panel" id="tab-gambling">
+    <main class="mx-auto max-w-6xl space-y-6 px-6 py-8">
+      <section class="panel command-bar flex flex-wrap items-center gap-3 p-4">
+        <div class="relative min-w-[200px] flex-1">
+          <span class="pointer-events-none absolute inset-y-0 left-4 flex items-center text-muted">🎲</span>
+          <input type="text" id="gmbTickerInput" class="field field-search w-full"
+                 placeholder="Enter a ticker (e.g. NVDA)" autocomplete="off" spellcheck="false" />
+        </div>
+        <select id="gmbHorizon" class="field max-w-[170px]">
+          <option value="21">Horizon: 1 Month</option>
+          <option value="63" selected>Horizon: 3 Months</option>
+          <option value="126">Horizon: 6 Months</option>
+          <option value="252">Horizon: 1 Year</option>
+        </select>
+        <button id="gmbRunBtn" class="btn-primary">🎲 Roll the Dice</button>
+        <span id="gmbStatus" class="basis-full text-sm text-muted sm:basis-auto"></span>
+      </section>
+
+      <p class="text-xs text-muted">Monte Carlo simulation of 1,000 hypothetical price paths drawn from this stock's own historical daily volatility (geometric Brownian motion). Purely statistical — not a prediction, forecast, or financial advice.</p>
+
+      <div id="gmbName" class="hero-name"></div>
+
+      <section class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" id="gmbStats" hidden>
+        <div class="stat-card"><span class="label">Current Price</span><span class="value" id="gmbCurrent">--</span></div>
+        <div class="stat-card"><span class="label">Median Outcome</span><span class="value" id="gmbMedian">--</span></div>
+        <div class="stat-card"><span class="label">Odds of Profit</span><span class="value" id="gmbProfit">--</span></div>
+        <div class="stat-card"><span class="label">Expected Return</span><span class="value" id="gmbExpected">--</span></div>
+        <div class="stat-card"><span class="label">Odds of +10%</span><span class="value" id="gmbUp10">--</span></div>
+        <div class="stat-card"><span class="label">Odds of −10%</span><span class="value" id="gmbDown10">--</span></div>
+        <div class="stat-card"><span class="label">90% Range (Low)</span><span class="value" id="gmbLow">--</span></div>
+        <div class="stat-card"><span class="label">90% Range (High)</span><span class="value" id="gmbHigh">--</span></div>
+      </section>
+
+      <section class="panel p-4">
+        <h2 class="mb-3 text-lg font-semibold">Projected Price Distribution</h2>
+        <div class="relative h-[400px]"><canvas id="gmbChart"></canvas></div>
       </section>
     </main>
   </div>

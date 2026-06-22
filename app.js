@@ -797,6 +797,324 @@ if (etfBody) etfBody.addEventListener("click", e => {
   if (row && row.dataset.sym) openTrendModal(row.dataset.sym, row.dataset.kind);
 });
 
+// ---- Money Flow tab: capital rotation between ETFs ----
+// Representative basket spanning US broad market, the 11 GICS sectors, bonds,
+// commodities, real estate and international — enough to read sector rotation.
+const FLOW_ETFS = [
+  ["SPY",  "US Broad"],     ["QQQ",  "US Broad"],     ["IWM",  "US Broad"],     ["DIA",  "US Broad"],
+  ["XLK",  "Sector"],       ["XLF",  "Sector"],       ["XLE",  "Sector"],       ["XLV",  "Sector"],
+  ["XLY",  "Sector"],       ["XLP",  "Sector"],       ["XLI",  "Sector"],       ["XLU",  "Sector"],
+  ["XLB",  "Sector"],       ["XLRE", "Sector"],       ["XLC",  "Sector"],
+  ["TLT",  "Bonds"],        ["HYG",  "Bonds"],        ["LQD",  "Bonds"],
+  ["GLD",  "Commodities"],  ["SLV",  "Commodities"],  ["USO",  "Commodities"],
+  ["VNQ",  "Real Estate"],
+  ["VEA",  "International"], ["VWO",  "International"], ["EEM",  "International"],
+];
+
+const flowWindowEl   = document.getElementById("flowWindow");
+const flowRefreshBtn = document.getElementById("flowRefreshBtn");
+const flowStatusEl   = document.getElementById("flowStatus");
+const flowHighlights = document.getElementById("flowHighlights");
+const flowBody       = document.getElementById("flowBody");
+let flowChart = null;
+const flowSeriesCache = new Map(); // sym -> series, populated once then reused per window
+let flowLoaded = false, flowLoading = false;
+
+function setFlowStatus(msg, isError = false) {
+  if (flowStatusEl) { flowStatusEl.textContent = msg; flowStatusEl.style.color = isError ? "#f87171" : "#94a3b8"; }
+}
+
+// Signed-dollar-volume money flow over the last `days` sessions.
+// Returns null if there isn't enough clean data.
+function computeMoneyFlow(series, days) {
+  const c = series.closes, v = series.volumes;
+  const pairs = [];
+  for (let i = 0; i < c.length; i++) if (c[i] != null && v[i] != null) pairs.push([c[i], v[i]]);
+  const win = pairs.slice(-(days + 1));
+  if (win.length < 3) return null;
+  let net = 0, total = 0;
+  for (let i = 1; i < win.length; i++) {
+    const dv = win[i][0] * win[i][1];          // dollar volume that day
+    net   += Math.sign(win[i][0] - win[i - 1][0]) * dv; // + on up days, − on down days
+    total += dv;
+  }
+  const first = win[0][0], lastPx = win[win.length - 1][0];
+  return {
+    net,
+    bias: total ? (net / total) * 100 : 0,      // −100..+100
+    avgDV: total / (win.length - 1),
+    priceChg: first ? ((lastPx - first) / first) * 100 : 0,
+  };
+}
+
+const signedCompact = n => (n < 0 ? "−" : "+") + "$" + compactNum(Math.abs(n));
+
+function renderFlow() {
+  const days = parseInt(flowWindowEl.value, 10);
+  const rows = [];
+  for (const [sym, cat] of FLOW_ETFS) {
+    const series = flowSeriesCache.get(sym);
+    if (!series) continue;
+    const mf = computeMoneyFlow(series, days);
+    if (mf) rows.push({ sym, cat, ...mf });
+  }
+  if (!rows.length) { setFlowStatus("No data available.", true); return; }
+  rows.sort((a, b) => b.bias - a.bias);
+
+  // Highlights + category rotation.
+  const top = rows[0], bottom = rows[rows.length - 1];
+  document.getElementById("flowTopIn").textContent  = `${top.sym}  ${top.bias >= 0 ? "+" : ""}${top.bias.toFixed(0)}%`;
+  document.getElementById("flowTopOut").textContent = `${bottom.sym}  ${bottom.bias.toFixed(0)}%`;
+  const catNet = {};
+  for (const r of rows) catNet[r.cat] = (catNet[r.cat] || 0) + r.net;
+  const cats = Object.entries(catNet).sort((a, b) => b[1] - a[1]);
+  const intoCat = cats[0], outOfCat = cats[cats.length - 1];
+  document.getElementById("flowRotation").innerHTML =
+    `<span class="positive">${intoCat[0]}</span> <span class="text-muted">←</span> <span class="negative">${outOfCat[0]}</span>`;
+  flowHighlights.hidden = false;
+
+  // Diverging horizontal bar chart of flow bias.
+  const labels = rows.map(r => r.sym);
+  const data   = rows.map(r => +r.bias.toFixed(1));
+  const colors = rows.map(r => (r.bias >= 0 ? "rgba(52,211,153,0.85)" : "rgba(251,113,133,0.85)"));
+  if (flowChart) flowChart.destroy();
+  flowChart = new Chart(document.getElementById("flowChart"), {
+    type: "bar",
+    data: { labels, datasets: [{ label: "Flow Bias %", data, backgroundColor: colors, borderWidth: 0, borderRadius: 3 }] },
+    options: {
+      indexAxis: "y", responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { title: { display: true, text: "← outflow      Flow Bias (%)      inflow →", color: "#94a3b8" },
+             suggestedMin: -100, suggestedMax: 100,
+             ticks: { color: "#94a3b8", callback: v => `${v}%` }, grid: { color: "#1f2940" } },
+        y: { ticks: { color: "#e2e8f0", font: { size: 11 } }, grid: { display: false } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => {
+          const r = rows[ctx.dataIndex];
+          return [`Flow bias: ${r.bias >= 0 ? "+" : ""}${r.bias.toFixed(1)}%`,
+                  `Net flow: ${signedCompact(r.net)}`,
+                  `Price Δ: ${r.priceChg >= 0 ? "+" : ""}${r.priceChg.toFixed(1)}%`];
+        } } },
+      },
+    },
+  });
+
+  // Detail table.
+  const maxAbsBias = Math.max(...rows.map(r => Math.abs(r.bias)), 1);
+  flowBody.innerHTML = "";
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+
+    const symTd = document.createElement("td");
+    const link = document.createElement("button");
+    link.className = "etf-link";
+    link.textContent = r.sym;
+    link.addEventListener("click", () => {
+      tickerInput.value = r.sym;
+      document.querySelector('.tab[data-tab="analysis"]').click();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      analyzeTicker();
+    });
+    symTd.appendChild(link);
+
+    const catTd = document.createElement("td");
+    catTd.className = "etf-desc";
+    catTd.textContent = r.cat;
+
+    const pxTd = document.createElement("td");
+    pxTd.className = "etf-vol " + (r.priceChg >= 0 ? "positive" : "negative");
+    pxTd.textContent = `${r.priceChg >= 0 ? "+" : ""}${r.priceChg.toFixed(1)}%`;
+
+    const dvTd = document.createElement("td");
+    dvTd.className = "etf-vol";
+    dvTd.textContent = "$" + compactNum(r.avgDV);
+
+    const netTd = document.createElement("td");
+    netTd.className = "etf-vol " + (r.net >= 0 ? "positive" : "negative");
+    netTd.textContent = signedCompact(r.net);
+
+    // Diverging in-cell bias bar, centered at zero.
+    const biasTd = document.createElement("td");
+    const half = (Math.abs(r.bias) / maxAbsBias) * 50;
+    const pos = r.bias >= 0;
+    biasTd.innerHTML =
+      `<div class="flow-bar"><div class="flow-bar-fill ${pos ? "pos" : "neg"}" ` +
+      `style="${pos ? "left:50%" : `right:50%`};width:${half.toFixed(1)}%"></div></div>` +
+      `<span class="flow-bias-label ${pos ? "positive" : "negative"}">${pos ? "+" : ""}${r.bias.toFixed(0)}%</span>`;
+
+    tr.append(symTd, catTd, pxTd, dvTd, netTd, biasTd);
+    flowBody.appendChild(tr);
+  }
+
+  setFlowStatus(`${rows.length} funds · ${days}-session window · money rotating into ${intoCat[0]}, out of ${outOfCat[0]}.`);
+}
+
+async function loadFlow() {
+  if (flowLoaded || flowLoading) return;
+  flowLoading = true;
+  setFlowStatus("Loading fund data…");
+  const queue = FLOW_ETFS.map(([sym]) => sym);
+  let done = 0;
+  async function worker() {
+    while (queue.length) {
+      const sym = queue.shift();
+      try {
+        const series = await fetchSeries(sym); // 24h cached, shared with ETFs tab
+        flowSeriesCache.set(sym, series);
+      } catch { /* skip funds that fail to load */ }
+      setFlowStatus(`Loading fund data… ${++done}/${FLOW_ETFS.length}`);
+    }
+  }
+  await Promise.all(Array.from({ length: 5 }, worker));
+  flowLoaded = true;
+  flowLoading = false;
+  renderFlow();
+}
+
+if (flowWindowEl)   flowWindowEl.addEventListener("change", () => { if (flowLoaded) renderFlow(); });
+if (flowRefreshBtn) flowRefreshBtn.addEventListener("click", () => { if (flowLoaded) renderFlow(); });
+const flowTabBtn = document.querySelector('.tab[data-tab="flow"]');
+if (flowTabBtn) flowTabBtn.addEventListener("click", loadFlow);
+
+// ---- Gambling with Statistics: Monte Carlo price simulator ----
+const gmbTickerInput = document.getElementById("gmbTickerInput");
+const gmbHorizon     = document.getElementById("gmbHorizon");
+const gmbRunBtn      = document.getElementById("gmbRunBtn");
+const gmbStatus      = document.getElementById("gmbStatus");
+const gmbStats       = document.getElementById("gmbStats");
+const gmbName        = document.getElementById("gmbName");
+let gmbChart = null, gmbRan = false;
+
+function setGmbStatus(msg, isError = false) {
+  if (gmbStatus) { gmbStatus.textContent = msg; gmbStatus.style.color = isError ? "#f87171" : "#94a3b8"; }
+}
+
+// Standard normal sample via Box–Muller.
+function randn() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function percentile(sorted, q) {
+  const idx = (sorted.length - 1) * q, lo = Math.floor(idx), hi = Math.ceil(idx);
+  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+const pct1 = v => `${v.toFixed(1)}%`;
+
+async function runSimulation() {
+  const symbol = normalizeSymbol(gmbTickerInput.value);
+  if (!symbol) { setGmbStatus("Please enter a valid ticker symbol.", true); return; }
+  const days = parseInt(gmbHorizon.value, 10);
+  setGmbStatus(`Simulating ${symbol}…`);
+  gmbRunBtn.disabled = true;
+  gmbRan = true;
+  try {
+    const series = await fetchSeries(symbol);
+    const closes = series.closes.filter(v => v != null);
+    const S0 = closes[closes.length - 1];
+
+    // Volatility from the last ~1y of daily log returns. We deliberately do NOT
+    // use the realized drift — that just extrapolates recent momentum and makes any
+    // recent winner look like a sure thing. Instead use a risk-neutral drift (the
+    // risk-free rate), so the odds reflect the stock's *risk*, not its past trend.
+    const w = closes.slice(-253);
+    const lr = [];
+    for (let i = 1; i < w.length; i++) lr.push(Math.log(w[i] / w[i - 1]));
+    const sigma = stddev(lr);
+    const rfDaily = 0.05 / 252;                 // risk-free rate (matches Sharpe calc)
+    const drift = rfDaily - 0.5 * sigma * sigma; // risk-neutral GBM drift
+
+    const N = 1000;
+    const matrix = Array.from({ length: days + 1 }, () => new Float64Array(N));
+    for (let p = 0; p < N; p++) {
+      let S = S0;
+      matrix[0][p] = S0;
+      for (let d = 1; d <= days; d++) { S *= Math.exp(drift + sigma * randn()); matrix[d][p] = S; }
+    }
+
+    // Per-day percentile bands for the fan chart.
+    const bands = { p5: [], p25: [], p50: [], p75: [], p95: [] };
+    for (let d = 0; d <= days; d++) {
+      const col = Array.from(matrix[d]).sort((a, b) => a - b);
+      bands.p5.push(percentile(col, 0.05));
+      bands.p25.push(percentile(col, 0.25));
+      bands.p50.push(percentile(col, 0.50));
+      bands.p75.push(percentile(col, 0.75));
+      bands.p95.push(percentile(col, 0.95));
+    }
+
+    // Outcome statistics from the ending prices.
+    const ending = Array.from(matrix[days]);
+    const sortedEnd = ending.slice().sort((a, b) => a - b);
+    const profit = (ending.filter(p => p > S0).length / N) * 100;
+    const up10   = (ending.filter(p => p >= S0 * 1.1).length / N) * 100;
+    const down10 = (ending.filter(p => p <= S0 * 0.9).length / N) * 100;
+    const med = percentile(sortedEnd, 0.50);
+    const low = percentile(sortedEnd, 0.05), high = percentile(sortedEnd, 0.95);
+    const expRet = (mean(ending) / S0 - 1) * 100;
+    const medRet = (med / S0 - 1) * 100;
+
+    gmbName.textContent = `${series.meta.longName} — ${gmbHorizon.options[gmbHorizon.selectedIndex].text.replace("Horizon: ", "")} outlook`;
+    const set = (id, text, cls) => {
+      const el = document.getElementById(id);
+      el.textContent = text;
+      el.className = "value" + (cls ? " " + cls : "");
+    };
+    set("gmbCurrent", `$${S0.toFixed(2)}`);
+    set("gmbMedian", `$${med.toFixed(2)} (${medRet >= 0 ? "+" : ""}${medRet.toFixed(1)}%)`, medRet >= 0 ? "positive" : "negative");
+    set("gmbProfit", pct1(profit), profit >= 50 ? "positive" : "negative");
+    set("gmbExpected", `${expRet >= 0 ? "+" : ""}${pct1(expRet)}`, expRet >= 0 ? "positive" : "negative");
+    set("gmbUp10", pct1(up10), "positive");
+    set("gmbDown10", pct1(down10), "negative");
+    set("gmbLow", `$${low.toFixed(2)}`);
+    set("gmbHigh", `$${high.toFixed(2)}`);
+    gmbStats.hidden = false;
+
+    const labels = Array.from({ length: days + 1 }, (_, i) => i);
+    const line = (label, data, border, bw, fill, bg) => ({
+      label, data, borderColor: border, backgroundColor: bg || "transparent",
+      fill: fill ?? false, pointRadius: 0, borderWidth: bw, tension: 0.1,
+    });
+    if (gmbChart) gmbChart.destroy();
+    gmbChart = new Chart(document.getElementById("gmbChart"), {
+      type: "line",
+      data: { labels, datasets: [
+        line("5th %ile",  bands.p5,  "rgba(56,189,248,0.25)", 1),
+        line("25th %ile", bands.p25, "rgba(56,189,248,0.30)", 1, "-1", "rgba(56,189,248,0.08)"),
+        line("Median",    bands.p50, "#38bdf8",               2.5, "-1", "rgba(56,189,248,0.12)"),
+        line("75th %ile", bands.p75, "rgba(56,189,248,0.30)", 1, "-1", "rgba(56,189,248,0.12)"),
+        line("95th %ile", bands.p95, "rgba(56,189,248,0.25)", 1, "-1", "rgba(56,189,248,0.08)"),
+      ] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        scales: {
+          x: { title: { display: true, text: "Trading days ahead", color: "#94a3b8" }, ticks: { color: "#94a3b8", maxTicksLimit: 10 }, grid: { color: "#1f2940" } },
+          y: { ticks: { color: "#94a3b8", callback: v => `$${v}` }, grid: { color: "#1f2940" } },
+        },
+        plugins: { legend: { labels: { color: "#e2e8f0", boxWidth: 12 } } },
+      },
+    });
+
+    setGmbStatus(`${symbol}: ${profit.toFixed(0)}% chance of profit over ${days} trading days (${N.toLocaleString()} simulations).`);
+  } catch (err) {
+    setGmbStatus(err.message, true);
+  } finally {
+    gmbRunBtn.disabled = false;
+  }
+}
+
+if (gmbRunBtn) gmbRunBtn.addEventListener("click", runSimulation);
+if (gmbTickerInput) gmbTickerInput.addEventListener("keydown", e => { if (e.key === "Enter") runSimulation(); });
+if (gmbHorizon) gmbHorizon.addEventListener("change", () => { if (gmbRan) runSimulation(); });
+const gmbTabBtn = document.querySelector('.tab[data-tab="gambling"]');
+if (gmbTabBtn) gmbTabBtn.addEventListener("click", () => {
+  if (!gmbRan) { if (!gmbTickerInput.value) gmbTickerInput.value = DEFAULT_TICKER; runSimulation(); }
+});
+
 // ---- Default ticker: load CSGP immediately on open ----
 const DEFAULT_TICKER = "GS";
 tickerInput.value = DEFAULT_TICKER;

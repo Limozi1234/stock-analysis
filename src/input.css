@@ -249,6 +249,19 @@
   .trend-row + .trend-row { @apply mt-1; }
   .trend-tag { @apply w-7 text-[0.6rem] font-semibold uppercase tracking-wider text-muted; }
   .etf-trend .spark { @apply inline-block h-[18px] w-20 align-middle; }
+
+  /* Money Flow tab — diverging in-cell bias bar -------------------- */
+  .flow-bar {
+    @apply relative h-2 w-full overflow-hidden rounded-full bg-surface2;
+  }
+  /* Center zero-line marker. */
+  .flow-bar::before {
+    content: ""; @apply absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-edge;
+  }
+  .flow-bar-fill { @apply absolute inset-y-0 rounded-full; }
+  .flow-bar-fill.pos { background: var(--color-up); }
+  .flow-bar-fill.neg { background: var(--color-down); }
+  .flow-bias-label { @apply mt-1 block text-right text-xs font-medium tabular-nums; }
   .spark-chg { @apply inline-block w-12 text-right text-xs font-semibold tabular-nums; }
   .spark-chg.positive { @apply text-up; }
   .spark-chg.negative { @apply text-down; }
