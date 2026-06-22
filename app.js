@@ -414,6 +414,312 @@ function renderEarnings(filings) {
   }).join("");
 }
 
+// ---- Proxy statement (DEF 14A) insights ----
+// The annual proxy is where executive compensation, governance practices, and
+// related-party dealings live. We (1) locate the latest DEF 14A from the same
+// EDGAR submissions feed, (2) pull hard numbers deterministically from the HTML
+// tables — so dollar figures are never hallucinated — and (3) optionally hand a
+// few located snippets to a tiny on-device LLM for a plain-English red-flag read.
+//
+// www.sec.gov serves the filing documents but 403s browser User-Agents, so it is
+// fetched through /api/secwww (a UA-compliant proxy: dev-server locally, a Vercel
+// serverless function in prod). data.sec.gov (CORS-friendly) still serves the JSON.
+const SECWWW = "/api/secwww"; // -> www.sec.gov, with a fair-access User-Agent
+
+async function findProxyFiling(cik) {
+  const cikNum = String(Number(cik));
+  const subs = await (await fetch(`${SEC_BASE}/submissions/CIK${cik}.json`)).json();
+  const r = subs.filings.recent;
+  for (let i = 0; i < r.form.length; i++) {
+    if (r.form[i] === "DEF 14A") {
+      return { accn: r.accessionNumber[i], doc: r.primaryDocument[i], filed: r.filingDate[i], cikNum };
+    }
+  }
+  return null;
+}
+
+async function fetchProxyHtml(f) {
+  const url = `${SECWWW}/Archives/edgar/data/${f.cikNum}/${f.accn.replace(/-/g, "")}/${f.doc}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Proxy document unavailable (HTTP ${res.status}).`);
+  return await res.text();
+}
+
+// Whitespace is frequently lost between inline tags in EDGAR HTML ("Stock<span>
+// Awards" -> "StockAwards"), so all table-header matching is whitespace-stripped.
+const squash = s => (s || "").replace(/\s+/g, "").toLowerCase();
+const num = s => { const n = Number(String(s).replace(/[^0-9.]/g, "")); return Number.isFinite(n) && n > 0 ? n : null; };
+const isYear = s => /^(19|20)\d\d$/.test(String(s).trim());
+const isMoney = s => /^[\d,]+(\.\d+)?$/.test(String(s).trim());
+const isFootnote = s => /^\(?\d{1,2}\)?$/.test(String(s).trim()); // stray "(4)" markers
+
+function proxyTables(doc) {
+  return [...doc.querySelectorAll("table")].map(t =>
+    [...t.rows].map(row => [...row.cells].map(c => c.textContent.replace(/\s+/g, " ").trim()))
+  );
+}
+
+// Locate and parse the Summary Compensation Table into per-executive records.
+function extractComp(tables) {
+  const sct = tables.find(t => {
+    const flat = squash(t.flat().join(""));
+    return flat.includes("salary") && flat.includes("nameandprincipalposition") &&
+           flat.includes("total") && (flat.includes("stockawards") || flat.includes("optionawards"));
+  });
+  if (!sct) return null;
+
+  // Clean each row down to its meaningful cells.
+  const rows = sct.map(r => {
+    const cells = r.filter(c => c !== "" && !isFootnote(c));
+    const year  = cells.find(isYear) || null;
+    const money = cells.filter(c => isMoney(c) && !isYear(c)).map(num).filter(Boolean);
+    const text  = cells.filter(c => /[a-z]/i.test(c) && !/^\$?[\d,]/.test(c)).join(" ").trim();
+    return { year, text, salary: money[0] ?? null, total: money.length ? money[money.length - 1] : null };
+  }).filter(r => r.year || r.total);
+
+  const years = rows.map(r => Number(r.year)).filter(Boolean);
+  if (!years.length) return null;
+  const maxYear = Math.max(...years);
+
+  const neos = [];
+  let cur = null;
+  for (const r of rows) {
+    const y = Number(r.year);
+    const looksLikeName = r.text && /[a-z]/.test(r.text) && r.text.split(" ").length <= 6 &&
+                          !/salary|total|year|principal|position|compensation/i.test(r.text);
+    if (y === maxYear && looksLikeName) {
+      cur = { name: r.text, title: "", latestYear: maxYear, latestTotal: r.total, priorTotal: null, salary: r.salary };
+      neos.push(cur);
+    } else if (cur) {
+      if (!cur.title && r.text && !isYear(r.text)) cur.title = r.text;
+      if (y === maxYear - 1 && cur.priorTotal == null) cur.priorTotal = r.total;
+      if (cur.latestTotal == null && y === maxYear) cur.latestTotal = r.total;
+    }
+  }
+  return neos.length ? { maxYear, neos } : null;
+}
+
+// Pull a window of plain text around the first occurrence of any keyword.
+function snippetAround(text, keywords, before = 120, after = 700) {
+  for (const kw of keywords) {
+    const i = text.toLowerCase().indexOf(kw.toLowerCase());
+    if (i >= 0) return text.slice(Math.max(0, i - before), i + after).replace(/\s+/g, " ").trim();
+  }
+  return null;
+}
+
+// Rule-based governance / red-flag signals. tone: good | warn | bad | info.
+function extractFlags(text) {
+  const flags = [];
+  const t = text.replace(/\s+/g, " ");
+  const has = re => re.test(t);
+
+  const ratio = t.match(/ratio[^.]{0,200}?(\d[\d,]*)\s*(?::|to)\s*1\b/i);
+  if (ratio) {
+    const r = Number(ratio[1].replace(/,/g, ""));
+    flags.push({ tone: r >= 300 ? "bad" : r >= 150 ? "warn" : "info",
+      label: `CEO pay ratio ${r.toLocaleString()}:1`,
+      note: "CEO total comp vs. median employee" + (r >= 300 ? " — notably high" : "") });
+  }
+
+  if (has(/prohibit\w*[^.]{0,60}(hedg|pledg)/i) || has(/(hedg|pledg)\w*[^.]{0,60}prohibit/i))
+    flags.push({ tone: "good", label: "Hedging/pledging prohibited", note: "Insiders can't hedge or pledge shares" });
+  else if (has(/pledg\w*[^.]{0,80}(shares|stock|collateral)/i) && has(/shares?\s+pledged/i))
+    flags.push({ tone: "warn", label: "Share pledging present", note: "Insider shares pledged as collateral" });
+
+  if (has(/clawback|compensation recovery policy/i))
+    flags.push({ tone: "good", label: "Clawback policy", note: "Can recoup incentive pay after restatements" });
+
+  const sop = t.match(/say[- ]on[- ]pay[^.]{0,200}?(\d{1,3}(?:\.\d)?)\s*%/i);
+  if (sop) { const p = Number(sop[1]);
+    flags.push({ tone: p < 70 ? "bad" : p < 90 ? "warn" : "good", label: `Say-on-pay support ${p}%`,
+      note: p < 70 ? "Low shareholder support — governance concern" : "Last advisory vote on pay" });
+  }
+
+  if (has(/dual[- ]class|class\s+b\s+common\s+stock[^.]{0,80}(ten|10)\s+votes|super[- ]?voting/i))
+    flags.push({ tone: "warn", label: "Dual-class / super-voting", note: "Voting power may not match economics" });
+  if (has(/supermajority/i) && !has(/eliminate[^.]{0,40}supermajority/i))
+    flags.push({ tone: "warn", label: "Supermajority provisions", note: "Entrenchment / anti-takeover friction" });
+  if (has(/repric\w*\s+(of\s+)?(stock\s+)?options/i) && !has(/without\s+stockholder\s+approval[^.]{0,40}not\s+permit/i))
+    flags.push({ tone: "warn", label: "Option repricing", note: "Underwater options may be repriced" });
+
+  const rpt = snippetAround(t, ["Related Person Transactions", "Certain Relationships and Related", "Related Party Transactions"], 0, 400);
+  if (rpt) {
+    const none = /\bno\b[^.]{0,40}(related[- ]person|transactions)|none\b|no such transactions|there were no/i.test(rpt);
+    flags.push(none
+      ? { tone: "good", label: "No related-party deals", note: "No material related-person transactions reported" }
+      : { tone: "warn", label: "Related-party transactions", note: "Disclosed related-person dealings — review" });
+  }
+
+  return flags;
+}
+
+function extractProxyInsights(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("script,style").forEach(n => n.remove());
+  const text = (doc.body?.textContent || "").replace(/ /g, " ");
+  return {
+    comp: extractComp(proxyTables(doc)),
+    flags: extractFlags(text),
+    snippets: {
+      relatedParty: snippetAround(text, ["Related Person Transactions", "Certain Relationships and Related", "Related Party Transactions"]),
+      changeInControl: snippetAround(text, ["Potential Payments upon Termination", "Change in Control", "Change-in-Control"]),
+    },
+  };
+}
+
+function fmtUSD(n) {
+  if (n == null) return "—";
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
+  return `$${n.toLocaleString()}`;
+}
+
+function renderProxyDeterministic(insights, filing) {
+  const el = document.getElementById("proxyResults");
+  if (!el) return;
+  const { comp, flags } = insights;
+
+  const flagHtml = flags.length
+    ? `<div class="flex flex-wrap gap-2">${flags.map(f =>
+        `<span class="proxy-flag ${f.tone}" title="${f.note.replace(/"/g, "&quot;")}">${f.label}</span>`).join("")}</div>`
+    : `<div class="text-sm text-muted">No rule-based governance flags detected.</div>`;
+
+  let compHtml = `<div class="text-sm text-muted">Summary Compensation Table could not be parsed automatically — open the filing to review.</div>`;
+  if (comp && comp.neos.length) {
+    compHtml = `<div class="scroll-thin overflow-x-auto"><table class="etf-table"><thead><tr>
+        <th>Executive</th><th class="text-right">Total (FY${comp.maxYear})</th>
+        <th class="text-right">Prior FY</th><th class="text-right">YoY</th></tr></thead><tbody>${
+      comp.neos.map(n => {
+        let yoy = "—", cls = "muted";
+        if (n.latestTotal && n.priorTotal) {
+          const pct = (n.latestTotal / n.priorTotal - 1) * 100;
+          cls = pct > 0 ? "positive" : pct < 0 ? "negative" : "muted";
+          yoy = `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`;
+        }
+        return `<tr><td><span class="font-semibold text-ink">${n.name}</span>${
+            n.title ? `<span class="block text-xs text-muted">${n.title}</span>` : ""}</td>
+          <td class="text-right tabular-nums font-semibold">${fmtUSD(n.latestTotal)}</td>
+          <td class="text-right tabular-nums text-muted">${fmtUSD(n.priorTotal)}</td>
+          <td class="text-right tabular-nums ${cls}">${yoy}</td></tr>`;
+      }).join("")}</tbody></table></div>`;
+  }
+
+  const aiSupported = "gpu" in navigator || true; // wasm fallback always available
+  el.innerHTML = `
+    <div>
+      <div class="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">Governance &amp; red-flag signals</div>
+      ${flagHtml}
+    </div>
+    <div>
+      <div class="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">Named executive officer compensation</div>
+      ${compHtml}
+    </div>
+    <div class="flex flex-wrap items-center gap-3 border-t border-edge/60 pt-4">
+      <button id="proxyAiBtn" class="btn-ghost">✨ Generate AI red-flag summary</button>
+      <span class="text-xs text-muted">${"gpu" in navigator ? "On-device model · WebGPU" : "On-device model · CPU (WASM, slower)"} — first run downloads ~0.5&nbsp;GB once.</span>
+    </div>
+    <div id="proxyAi" class="proxy-ai" hidden></div>
+    <a href="https://www.sec.gov/Archives/edgar/data/${filing.cikNum}/${filing.accn.replace(/-/g, "")}/${filing.doc}"
+       target="_blank" rel="noopener noreferrer" class="inline-block text-xs font-medium text-brand">
+       Source: DEF 14A filed ${filing.filed} ↗</a>`;
+
+  document.getElementById("proxyAiBtn")?.addEventListener("click", () => summarizeProxyWithLLM(insights));
+}
+
+// Lazy-loaded on-device text-generation pipeline (transformers.js).
+let proxyLLM = null;
+const PROXY_MODEL = "onnx-community/Qwen2.5-0.5B-Instruct";
+
+async function getProxyLLM(onProgress) {
+  if (proxyLLM) return proxyLLM;
+  const { pipeline, env } = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1");
+  env.allowLocalModels = false;
+  const device = "gpu" in navigator ? "webgpu" : "wasm";
+  proxyLLM = await pipeline("text-generation", PROXY_MODEL, {
+    device, dtype: device === "webgpu" ? "q4f16" : "q4", progress_callback: onProgress,
+  });
+  return proxyLLM;
+}
+
+function buildProxyPrompt(insights) {
+  const { comp, flags, snippets } = insights;
+  const lines = [];
+  if (comp) {
+    lines.push(`Executive compensation (fiscal ${comp.maxYear}):`);
+    for (const n of comp.neos.slice(0, 6)) {
+      let yoy = "";
+      if (n.latestTotal && n.priorTotal) yoy = ` (${n.latestTotal > n.priorTotal ? "up" : "down"} ${Math.abs((n.latestTotal / n.priorTotal - 1) * 100).toFixed(0)}% YoY)`;
+      lines.push(`- ${n.name}, ${n.title || "executive"}: ${fmtUSD(n.latestTotal)} total${yoy}`);
+    }
+  }
+  if (flags.length) lines.push(`\nGovernance signals: ${flags.map(f => f.label).join("; ")}.`);
+  if (snippets.relatedParty) lines.push(`\nRelated-party excerpt: "${snippets.relatedParty.slice(0, 500)}"`);
+  if (snippets.changeInControl) lines.push(`\nChange-in-control excerpt: "${snippets.changeInControl.slice(0, 400)}"`);
+  return lines.join("\n");
+}
+
+async function summarizeProxyWithLLM(insights) {
+  const box = document.getElementById("proxyAi");
+  const btn = document.getElementById("proxyAiBtn");
+  if (!box) return;
+  box.hidden = false;
+  btn && (btn.disabled = true);
+  box.innerHTML = `<div class="text-sm text-muted">Loading on-device model… <span id="proxyAiProg">0%</span></div>`;
+
+  try {
+    const llm = await getProxyLLM(p => {
+      if (p.status === "progress" && p.file && /\.onnx/.test(p.file)) {
+        const prog = document.getElementById("proxyAiProg");
+        if (prog) prog.textContent = `${Math.round(p.progress || 0)}%`;
+      }
+    });
+    box.innerHTML = `<div class="text-sm text-muted">Reading the proxy and writing a summary…</div>`;
+
+    const messages = [
+      { role: "system", content: "You are a forensic executive-compensation analyst. Using ONLY the data provided, write 3-5 short bullet points on the most interesting or concerning findings for an investor: pay levels and trends, governance red flags, and related-party or change-in-control concerns. Be specific and factual. Do not invent numbers. Each bullet under 25 words." },
+      { role: "user", content: buildProxyPrompt(insights) },
+    ];
+    const out = await llm(messages, { max_new_tokens: 320, do_sample: false, temperature: 0 });
+    let txt = out[0].generated_text;
+    if (Array.isArray(txt)) txt = txt[txt.length - 1].content; // chat format returns message array
+    txt = String(txt).trim();
+
+    const bullets = txt.split(/\n+/).map(l => l.replace(/^[\s•*\-\d.]+/, "").trim()).filter(l => l.length > 4);
+    box.innerHTML = `
+      <div class="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">AI red-flag summary <span class="text-muted/70">· ${PROXY_MODEL.split("/")[1]}</span></div>
+      <ul class="proxy-ai-list">${bullets.map(b => `<li>${b.replace(/</g, "&lt;")}</li>`).join("")}</ul>
+      <p class="mt-2 text-[0.7rem] text-muted">Generated on-device by a small open model — verify against the source filing before relying on it. Not financial advice.</p>`;
+  } catch (err) {
+    box.innerHTML = `<div class="text-sm text-down">On-device summary failed: ${err.message}. The structured data above is unaffected.</div>`;
+  } finally {
+    btn && (btn.disabled = false);
+  }
+}
+
+async function analyzeProxy() {
+  const symbol = normalizeSymbol(tickerInput.value || (currentSeries && currentSeries.symbol));
+  const statusEl2 = document.getElementById("proxyStatus");
+  const results = document.getElementById("proxyResults");
+  if (!symbol) { if (statusEl2) statusEl2.textContent = "Analyze a ticker first, or type one above."; return; }
+  if (results) results.innerHTML = "";
+  if (statusEl2) statusEl2.textContent = `Locating latest DEF 14A for ${symbol}…`;
+
+  try {
+    const cik = await getCIK(symbol);
+    if (!cik) { statusEl2.textContent = `No SEC CIK for ${symbol} (ETFs and non-US tickers have no proxy).`; return; }
+    const filing = await findProxyFiling(cik);
+    if (!filing) { statusEl2.textContent = `No proxy statement (DEF 14A) on file for ${symbol}.`; return; }
+    statusEl2.textContent = `Fetching & parsing proxy filed ${filing.filed}…`;
+    const html = await fetchProxyHtml(filing);
+    const insights = extractProxyInsights(html);
+    statusEl2.textContent = `Parsed proxy statement filed ${filing.filed}.`;
+    renderProxyDeterministic(insights, filing);
+  } catch (err) {
+    if (statusEl2) statusEl2.textContent = `Proxy analysis failed: ${err.message}`;
+  }
+}
+
 // ---- Analysis tab actions ----
 async function analyzeTicker() {
   const symbol = normalizeSymbol(tickerInput.value);
@@ -447,6 +753,7 @@ async function analyzeTicker() {
 
 searchBtn.addEventListener("click", analyzeTicker);
 tickerInput.addEventListener("keydown", e => { if (e.key==="Enter") analyzeTicker(); });
+document.getElementById("proxyBtn")?.addEventListener("click", analyzeProxy);
 smaToggle.addEventListener("change",    () => { if (currentSeries) renderPriceChart(currentSeries.symbol, currentSeries); });
 sma200Toggle.addEventListener("change", () => { if (currentSeries) renderPriceChart(currentSeries.symbol, currentSeries); });
 

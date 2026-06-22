@@ -304,4 +304,25 @@
   .earnings-arrow { @apply text-base; }
   .earnings-eps-label { @apply text-[0.7rem] font-medium uppercase tracking-wider text-muted; }
   .earnings-filed { @apply mt-2 text-xs font-medium text-brand; }
+
+  /* Proxy statement insights (Analysis tab) ------------------------ */
+  .proxy-flag {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold;
+  }
+  .proxy-flag::before { content: ""; @apply h-1.5 w-1.5 rounded-full; }
+  .proxy-flag.good { @apply border-up/40 bg-up/10 text-up; }
+  .proxy-flag.good::before { @apply bg-up; }
+  .proxy-flag.warn { @apply border-amber-400/40 bg-amber-400/10 text-amber-300; }
+  .proxy-flag.warn::before { @apply bg-amber-300; }
+  .proxy-flag.bad  { @apply border-down/40 bg-down/10 text-down; }
+  .proxy-flag.bad::before  { @apply bg-down; }
+  .proxy-flag.info { @apply border-brand/40 bg-brand/10 text-brand; }
+  .proxy-flag.info::before { @apply bg-brand; }
+
+  .proxy-ai {
+    @apply rounded-xl border border-brand/30 bg-gradient-to-b from-brand/10 to-surface2/30 p-4;
+  }
+  .proxy-ai-list { @apply space-y-2 text-sm leading-relaxed text-ink; }
+  .proxy-ai-list li { @apply relative pl-5; }
+  .proxy-ai-list li::before { content: "▹"; @apply absolute left-0 text-brand; }
 }
